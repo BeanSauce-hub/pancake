@@ -9,31 +9,23 @@
 <style>
   :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#94a3b8;--accent:#ef4444}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"PingFang SC",Segoe UI,Roboto}
-
-  /* Start 覆盖层（仅按钮） */
   #start{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10}
   #startBtn{font-size:40px;font-weight:800;padding:18px 64px;border:0;border-radius:18px;background:var(--accent);color:#fff;cursor:pointer}
-
-  /* 主体布局：工具栏 + 标题条 + 图表 */
   .wrap{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr;gap:8px;place-items:center;padding:14px}
   .toolbar{display:flex;gap:10px;align-items:center;justify-content:center}
   .btn,select{border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:10px;padding:6px 12px;cursor:pointer}
   .btn:disabled{opacity:.5;cursor:not-allowed}
   .badge{color:var(--muted);font-size:12px;padding-left:6px}
   #titlebar{font-size:18px;font-weight:600;letter-spacing:.2px}
-
   #stage{width:min(1400px,94vw);height:calc(88vh - 96px);display:flex;align-items:center;justify-content:center}
   #chart{width:100%;height:100%;background:var(--card);border:1px solid #334155;border-radius:16px}
-
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style>
 </head>
 <body>
 
-<!-- Start -->
 <section id="start"><button id="startBtn">START</button></section>
 
-<!-- Main -->
 <main class="wrap" id="main" style="display:none">
   <div class="toolbar">
     <button id="upload" class="btn">上传 .xlsx</button>
@@ -48,7 +40,6 @@
 <input type="file" id="file" accept=".xlsx" class="sr-only"/>
 
 <script>
-  // ------- DOM -------
   const start = document.getElementById('start');
   const startBtn = document.getElementById('startBtn');
   const main = document.getElementById('main');
@@ -59,7 +50,6 @@
   const selector = document.getElementById('selector');
   const titlebar = document.getElementById('titlebar');
 
-  // ------- 图表延迟初始化，防止 display:none 尺寸为0 -------
   let chart = null, resizeObs = null;
   function ensureChart(){
     if(!chart){
@@ -71,10 +61,8 @@
     }
   }
 
-  // ------- 数据存储 {派送方 -> Map(状态 -> 数量)} -------
   let GROUP = new Map();
 
-  // ------- 文件交互 -------
   const openPicker = ()=>{ fileEl.value=''; fileEl.click(); };
   startBtn.onclick = openPicker;
   upload.onclick   = openPicker;
@@ -91,7 +79,6 @@
     requestAnimationFrame(()=> chart && chart.resize());
   });
 
-  // ------- 工具函数 -------
   const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
 
   function findHeaderCandidates(sheet, range, headerText, scanRows=80){
@@ -130,7 +117,6 @@
     return { pairCount, freqByGroup };
   }
 
-  // ------- 读取所有sheet -------
   async function loadWorkbook(file){
     save.disabled = true; badge.textContent = ''; GROUP = new Map();
     const buf = await file.arrayBuffer();
@@ -176,25 +162,20 @@
     save.disabled = false;
   }
 
-  // ------- 实际取件量逻辑 -------
+  // —— 取件率：快递员收件 + 派送异常 + 签收 —— //
   function updateTitleBar(groupName, map){
     const total = Array.from(map.values()).reduce((a,b)=> a + b, 0);
-
-    // 分子：仅这三种状态
     const PICK_STATUS = new Set(
-      ['快递员取件','派送异常','签收'].map(s => norm(s))
+      ['快递员收件','派送异常','签收'].map(s => norm(s))
     );
-
     let pick = 0;
     for (const [k, v] of map.entries()) {
       if (PICK_STATUS.has(norm(k))) pick += v;
     }
-
     const rate = total ? (pick / total) : 0;
     titlebar.textContent = `${groupName} · 实际取件量 ${(rate*100).toFixed(2)}%`;
   }
 
-  // ------- 渲染图表 -------
   function renderByGroup(encodedKey){
     ensureChart();
     const key = decodeURIComponent(encodedKey);
@@ -223,14 +204,10 @@
     requestAnimationFrame(()=> chart && chart.resize());
   }
 
-  // ------- 导出图片 -------
   save.onclick = ()=>{
     const current = selector.options[selector.selectedIndex]?.text || 'chart';
     const url = chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${current}-pie.png`;
-    a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `${current}-pie.png`; a.click();
   };
 </script>
 </body>
