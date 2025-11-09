@@ -9,31 +9,50 @@
 <style>
   :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#94a3b8;--accent:#ef4444}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"PingFang SC",Segoe UI,Roboto}
+
+  /* 开始页 */
   #start{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10}
   #startBtn{font-size:40px;font-weight:800;padding:18px 64px;border:0;border-radius:18px;background:var(--accent);color:#fff;cursor:pointer}
-  .wrap{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr;gap:8px;place-items:center;padding:14px}
+
+  /* 主体布局 */
+  .wrap{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr;gap:14px;place-items:center;padding:20px}
+  #titlebar{
+    font-size:28px;
+    font-weight:800;
+    letter-spacing:.5px;
+    text-align:center;
+    margin-top:10px;
+  }
   .toolbar{display:flex;gap:10px;align-items:center;justify-content:center}
-  .btn,select{border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:10px;padding:6px 12px;cursor:pointer}
+  .btn,select{
+    border:1px solid #334155;background:#1f2937;color:#e5e7eb;
+    border-radius:10px;padding:6px 12px;cursor:pointer
+  }
   .btn:disabled{opacity:.5;cursor:not-allowed}
   .badge{color:var(--muted);font-size:12px;padding-left:6px}
-  #titlebar{font-size:18px;font-weight:600;letter-spacing:.2px}
-  #stage{width:min(1400px,94vw);height:calc(88vh - 96px);display:flex;align-items:center;justify-content:center}
+
+  #stage{width:min(1400px,94vw);height:calc(88vh - 130px);display:flex;align-items:center;justify-content:center}
   #chart{width:100%;height:100%;background:var(--card);border:1px solid #334155;border-radius:16px}
+
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style>
 </head>
 <body>
 
+<!-- Start -->
 <section id="start"><button id="startBtn">START</button></section>
 
+<!-- Main -->
 <main class="wrap" id="main" style="display:none">
+  <div id="titlebar"></div>
+
   <div class="toolbar">
     <button id="upload" class="btn">上传 .xlsx</button>
     <select id="selector" title="派送方"></select>
     <button id="save" class="btn" disabled>下载 PNG</button>
     <span id="badge" class="badge"></span>
   </div>
-  <div id="titlebar"></div>
+
   <div id="stage"><div id="chart" role="img" aria-label="运单状态占比图"></div></div>
 </main>
 
@@ -162,7 +181,7 @@
     save.disabled = false;
   }
 
-  // —— 取件率：快递员收件 + 派送异常 + 签收 —— //
+  // ---- 取件率：快递员收件 + 派送异常 + 签收 ----
   function updateTitleBar(groupName, map){
     const total = Array.from(map.values()).reduce((a,b)=> a + b, 0);
     const PICK_STATUS = new Set(
@@ -180,10 +199,7 @@
     ensureChart();
     const key = decodeURIComponent(encodedKey);
     const m = GROUP.get(key) || new Map();
-    const data = Array.from(m.entries())
-      .map(([name,value])=>({name,value}))
-      .sort((a,b)=>b.value-a.value);
-
+    const data = Array.from(m.entries()).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
     updateTitleBar(key, m);
 
     chart.setOption({
@@ -194,13 +210,12 @@
         name:key,
         type:'pie',
         radius: window.innerWidth<1200 ? ['46%','82%'] : ['52%','86%'],
-        center:['60%','50%'],
+        center:['60%','52%'],
         itemStyle:{borderColor:'#0f172a',borderWidth:2},
         label:{color:'#e5e7eb',formatter:'{b} {d}%'},
         data
       }]
     }, true);
-
     requestAnimationFrame(()=> chart && chart.resize());
   }
 
