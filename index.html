@@ -9,18 +9,18 @@
 <style>
   :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#94a3b8;--accent:#ef4444}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"PingFang SC",Segoe UI,Roboto}
-  /* 开场，仅按钮 */
+  /* 开场页 */
   #start{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10}
   #startBtn{font-size:40px;font-weight:800;padding:18px 64px;border:0;border-radius:18px;background:var(--accent);color:#fff;cursor:pointer}
-  /* 主体：居中栅格 */
-  .wrap{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr;gap:10px;place-items:center;padding:20px}
+  /* 主体：极简+居中 */
+  .wrap{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr;gap:10px;place-items:center;padding:20px;text-align:center}
   h1{margin:0;font-size:22px;font-weight:700;letter-spacing:.5px}
-  .bar{display:flex;gap:8px;align-items:center;justify-content:center}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
   .btn{border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:10px;padding:6px 10px;cursor:pointer}
+  select{border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:10px;padding:6px 10px;cursor:pointer}
   .badge{color:var(--muted);font-size:12px}
   #stage{width:min(1200px,92vw);height:calc(84vh - 90px);display:flex;align-items:center;justify-content:center}
   #chart{width:100%;height:100%;background:var(--card);border:1px solid #334155;border-radius:16px}
-  /* 去除多余占位 */
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style>
 </head>
@@ -36,7 +36,8 @@
   <h1>谁动了我的煎饼？</h1>
   <div class="bar">
     <button id="upload" class="btn">上传 .xlsx</button>
-    <button id="save"   class="btn" disabled>下载 PNG</button>
+    <select id="selector" title="派送方"></select>
+    <button id="save" class="btn" disabled>下载 PNG</button>
     <span id="badge" class="badge"></span>
   </div>
   <div id="stage"><div id="chart" role="img" aria-label="运单状态占比图"></div></div>
@@ -53,12 +54,17 @@
   const upload = document.getElementById('upload');
   const save   = document.getElementById('save');
   const badge  = document.getElementById('badge');
+  const selector = document.getElementById('selector');
   const chart  = echarts.init(document.getElementById('chart'));
 
-  // 极简交互
+  // 数据：按派送方聚合后的 { 派送方 -> Map(状态 -> 计数) }
+  let GROUP = new Map();
+
+  // 交互
   const openPicker = ()=>{ fileEl.value=''; fileEl.click(); };
   startBtn.onclick = openPicker;
   upload.onclick   = openPicker;
+  selector.onchange = ()=> renderByGroup(selector.value);
 
   fileEl.addEventListener('change', async (e)=>{
     const f = e.target.files?.[0];
@@ -69,70 +75,113 @@
     main.style.display='grid';
   });
 
-  // —— 稳健解析：遍历所有表，选取“最密集”的【运单状态】列 —— //
+  // —— 稳健解析：在同一 sheet 中寻找【派送方】与【运单状态】的最佳表头“成对组合” —— //
   const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
 
-  function scanColumn(sheet, colIdx, headerRow, range){
-    const freq = new Map(); let count=0, emptyStreak=0, LIMIT=15;
-    for(let r=headerRow+1;r<=range.e.r;r++){
-      const cell = sheet[XLSX.utils.encode_cell({r,c:colIdx})];
-      let v = cell ? (cell.w ?? cell.v) : '';
-      v = String(v ?? '').trim();
-      if(v){ count++; emptyStreak=0; freq.set(v,(freq.get(v)||0)+1); }
-      else { emptyStreak++; if(emptyStreak>=LIMIT && count>0) break; }
+  // 找到 headerText 的候选（前N行内）
+  function findHeaderCandidates(sheet, range, headerText, scanRows=80){
+    const target = norm(headerText);
+    const heads = [];
+    const R = Math.min(range.e.r, range.s.r + scanRows);
+    for(let r=range.s.r; r<=R; r++){
+      for(let c=range.s.c; c<=range.e.c; c++){
+        const cell = sheet[XLSX.utils.encode_cell({r,c})];
+        if(!cell) continue;
+        if(norm(cell.w ?? cell.v) === target) heads.push({r,c});
+      }
     }
-    return {count,freq};
+    return heads;
+  }
+
+  // 评估一对表头（派送方列与状态列）的“交集密度”，并返回该对下的计数
+  function scorePair(sheet, range, headA, headB){
+    const startRow = Math.max(headA.r, headB.r) + 1;
+    const freqByGroup = new Map(); // group -> Map(status->count)
+    let pairCount = 0;
+    let emptyStreak = 0;
+    const LIMIT = 20;
+
+    for(let r=startRow; r<=range.e.r; r++){
+      const ca = sheet[XLSX.utils.encode_cell({r, c: headA.c})];
+      const cb = sheet[XLSX.utils.encode_cell({r, c: headB.c})];
+      let ga = ca ? (ca.w ?? ca.v) : '';
+      let sb = cb ? (cb.w ?? cb.v) : '';
+      ga = String(ga ?? '').trim();
+      sb = String(sb ?? '').trim();
+      if(ga && sb){
+        pairCount++;
+        emptyStreak = 0;
+        if(!freqByGroup.has(ga)) freqByGroup.set(ga, new Map());
+        const m = freqByGroup.get(ga);
+        m.set(sb, (m.get(sb) || 0) + 1);
+      }else{
+        emptyStreak++;
+        if(emptyStreak >= LIMIT && pairCount > 0) break;
+      }
+    }
+    return { pairCount, freqByGroup, startRow };
   }
 
   async function loadWorkbook(file){
-    save.disabled = true; badge.textContent = '';
+    save.disabled = true; badge.textContent = ''; GROUP = new Map();
     const buf = await file.arrayBuffer();
     const wb  = XLSX.read(buf,{type:'array'});
 
-    const TOTAL = new Map(); let totalRows = 0; const target = norm('运单状态');
+    let totalRows = 0;
 
-    for(const name of wb.SheetNames){
-      const sheet = wb.Sheets[name]; if(!sheet || !sheet['!ref']) continue;
+    for(const sheetName of wb.SheetNames){
+      const sheet = wb.Sheets[sheetName];
+      if(!sheet || !sheet['!ref']) continue;
       const range = XLSX.utils.decode_range(sheet['!ref']);
 
-      // 找候选表头
-      const heads=[]; const R = Math.min(range.e.r, range.s.r+80);
-      for(let r=range.s.r;r<=R;r++){
-        for(let c=range.s.c;c<=range.e.c;c++){
-          const cell = sheet[XLSX.utils.encode_cell({r,c})];
-          if(!cell) continue;
-          if(norm(cell.w ?? cell.v)===target) heads.push({r,c});
+      const headsDispatch = findHeaderCandidates(sheet, range, '派送方');
+      const headsStatus   = findHeaderCandidates(sheet, range, '运单状态');
+      if(headsDispatch.length===0 || headsStatus.length===0) continue;
+
+      // 在所有候选对里选择“交集非空最多”的那一对
+      let best = { pairCount: -1, freqByGroup: null };
+      for(const ha of headsDispatch){
+        for(const hb of headsStatus){
+          const res = scorePair(sheet, range, ha, hb);
+          if(res.pairCount > best.pairCount) best = res;
         }
       }
-      if(heads.length===0) continue;
+      if(best.pairCount <= 0) continue;
 
-      // 选最密集的一列
-      let best={count:-1,freq:null,r:-1,c:-1};
-      for(const h of heads){
-        const res = scanColumn(sheet,h.c,h.r,range);
-        const better = res.count>best.count || (res.count===best.count && (h.r>best.r || (h.r===best.r && h.c>best.c)));
-        if(better) best={...res,r:h.r,c:h.c};
+      // 合并到总 GROUP
+      totalRows += best.pairCount;
+      for(const [dispatch, inner] of best.freqByGroup.entries()){
+        if(!GROUP.has(dispatch)) GROUP.set(dispatch, new Map());
+        const g = GROUP.get(dispatch);
+        for(const [status, n] of inner.entries()){
+          g.set(status, (g.get(status) || 0) + n);
+        }
       }
-      if(best.count<=0) continue;
-
-      totalRows += best.count;
-      for(const [k,v] of best.freq.entries()) TOTAL.set(k,(TOTAL.get(k)||0)+v);
     }
 
-    if(totalRows===0){ chart.clear(); badge.textContent='无数据'; return; }
+    // 没数据
+    if(totalRows===0){ chart.clear(); selector.innerHTML=''; badge.textContent='无数据'; return; }
 
-    const data = Array.from(TOTAL.entries()).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
-    badge.innerHTML = `总计 ${totalRows}`;
-    drawPie(data);
+    // 构建下拉菜单
+    const options = Array.from(GROUP.keys()).sort((a,b)=>a.localeCompare(b,'zh'));
+    selector.innerHTML = options.map(v=>`<option value="${encodeURIComponent(v)}">${v}</option>`).join('');
+    badge.textContent = `总计 ${totalRows}`;
+    // 渲染首个
+    renderByGroup(encodeURIComponent(options[0]));
     save.disabled = false;
   }
 
-  function drawPie(data){
+  function renderByGroup(encodedKey){
+    const key = decodeURIComponent(encodedKey);
+    const m = GROUP.get(key) || new Map();
+    const data = Array.from(m.entries()).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
+
     chart.setOption({
       backgroundColor:'transparent',
       tooltip:{trigger:'item',formatter:p=>`${p.name}<br/>${p.value}｜${p.percent}%`},
       legend:{type:'scroll',orient:'vertical',left:'4%',top:'center',textStyle:{color:'#cbd5e1'}},
       series:[{
+        name:key,
         type:'pie',
         radius: window.innerWidth<1100 ? ['42%','78%'] : ['50%','84%'],
         center:['60%','50%'],
@@ -143,10 +192,11 @@
     },true);
   }
 
-  // 导出图像
+  // 导出当前图像
   save.onclick = ()=>{
+    const current = selector.options[selector.selectedIndex]?.text || 'chart';
     const url = chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
-    const a = document.createElement('a'); a.href=url; a.download='pancake-pie.png'; a.click();
+    const a = document.createElement('a'); a.href=url; a.download=`${current}-pie.png`; a.click();
   };
 
   // 自适应
