@@ -4,38 +4,18 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>谁动了我的煎饼？</title>
-
-  <!-- libs -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
   <style>
-    :root{
-      --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#94a3b8; --accent:#ef4444;
-    }
+    :root{ --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#94a3b8; --accent:#ef4444; }
     html,body{height:100%}
-    body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,"PingFang SC",sans-serif;color:var(--text)}
-
-    /* 仅开始页居中 */
-    #startScreen{
-      position:fixed; inset:0; display:grid; place-items:center;
-      background:radial-gradient(1000px 400px at 50% -10%, #172036, transparent), var(--bg);
-      z-index:10;
-    }
-    #brand{
-      position:absolute; top:28px; left:28px; font-weight:700; letter-spacing:.5px; opacity:.9;
-    }
-    #startBtn{
-      font-size:44px; font-weight:800; letter-spacing:2px;
-      padding:22px 70px; border:none; border-radius:22px; cursor:pointer;
-      color:#fff; background:var(--accent);
-      box-shadow:0 12px 40px rgba(239,68,68,.35);
-      transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
-    }
-    #startBtn:hover{ transform:translateY(-1px); background:#dc2626; box-shadow:0 14px 50px rgba(239,68,68,.5);}
-    #startBtn:active{ transform:translateY(1px); }
-
-    /* 主页面布局（不居中） */
+    body{margin:0;background:var(--bg);font-family:"Segoe UI","PingFang SC",sans-serif;color:var(--text)}
+    #startScreen{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(800px 400px at 50% -10%, #172036, transparent), var(--bg);z-index:10;}
+    #brand{position:absolute;top:28px;left:28px;font-weight:700;opacity:.9}
+    #startBtn{font-size:44px;font-weight:800;padding:22px 70px;border:none;border-radius:22px;cursor:pointer;color:#fff;background:var(--accent);box-shadow:0 12px 40px rgba(239,68,68,.35);transition:.12s}
+    #startBtn:hover{background:#dc2626;box-shadow:0 14px 50px rgba(239,68,68,.5);transform:translateY(-1px)}
+    #startBtn:active{transform:translateY(1px)}
     .wrap{max-width:1100px;margin:26px auto;padding:0 16px}
     h1{margin:0 0 14px;font-size:26px}
     .muted{color:var(--muted)}
@@ -46,115 +26,135 @@
   </style>
 </head>
 <body>
-  <!-- 开始页（仅按钮居中） -->
   <section id="startScreen">
     <div id="brand">谁动了我的煎饼？</div>
     <button id="startBtn">START</button>
   </section>
 
-  <!-- 主页面 -->
   <main class="wrap" id="main" style="display:none">
     <h1>谁动了我的煎饼？ · 运单状态占比</h1>
-    <div class="muted" style="margin-bottom:8px">上传 .xlsx，读取“运单状态”列并生成圆饼图。</div>
-
+    <div class="muted" style="margin-bottom:8px">上传 .xlsx 文件，系统将自动读取所有工作表中的“运单状态”并生成圆饼图。</div>
     <div class="toolbar">
       <button id="uploadBtn" class="btn">重新上传 .xlsx</button>
       <button id="savePng" class="btn" disabled>下载图像 PNG</button>
       <span id="summary" class="muted" style="margin-left:6px">尚未载入数据</span>
     </div>
-
     <div id="chart"></div>
   </main>
 
-  <!-- 隐藏文件选择器：仅 .xlsx -->
   <input type="file" id="fileInput" accept=".xlsx" style="display:none"/>
 
 <script>
-  const startScreen = document.getElementById('startScreen');
-  const startBtn    = document.getElementById('startBtn');
-  const main        = document.getElementById('main');
-  const uploadBtn   = document.getElementById('uploadBtn');
-  const fileInput   = document.getElementById('fileInput');
-  const saveBtn     = document.getElementById('savePng');
-  const summaryEl   = document.getElementById('summary');
-  const chart       = echarts.init(document.getElementById('chart'));
+const startScreen = document.getElementById('startScreen');
+const startBtn = document.getElementById('startBtn');
+const main = document.getElementById('main');
+const uploadBtn = document.getElementById('uploadBtn');
+const fileInput = document.getElementById('fileInput');
+const saveBtn = document.getElementById('savePng');
+const summaryEl = document.getElementById('summary');
+const chart = echarts.init(document.getElementById('chart'));
 
-  // 只打开文件选择器，不做其它
-  startBtn.addEventListener('click', () => { fileInput.value=''; fileInput.click(); });
-  uploadBtn.addEventListener('click', () => { fileInput.value=''; fileInput.click(); });
+// 启动按钮
+startBtn.addEventListener('click', ()=>{ fileInput.value=''; fileInput.click(); });
+uploadBtn.addEventListener('click', ()=>{ fileInput.value=''; fileInput.click(); });
 
-  fileInput.addEventListener('change', async (e)=>{
-    const f = e.target.files?.[0];
-    if(!f) return;
-    if(!f.name.toLowerCase().endsWith('.xlsx')){
-      alert('只支持 .xlsx 文件'); return;
+fileInput.addEventListener('change', async e=>{
+  const f = e.target.files?.[0];
+  if(!f) return;
+  if(!f.name.toLowerCase().endsWith('.xlsx')){ alert('只支持 .xlsx 文件'); return; }
+  try{
+    await loadWorkbook(f);
+    startScreen.style.display='none';
+    main.style.display='block';
+  }catch(err){
+    alert(err.message || '解析失败，请检查文件格式');
+  }
+});
+
+// 清洗字符串
+function norm(s){ return String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase(); }
+
+async function loadWorkbook(file){
+  summaryEl.textContent='正在解析整个表...';
+  saveBtn.disabled=true;
+
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf,{type:'array'});
+  const totalCounts = new Map();
+  let totalRows = 0;
+
+  for(const sheetName of wb.SheetNames){
+    const sheet = wb.Sheets[sheetName];
+    if(!sheet || !sheet['!ref']) continue;
+
+    const range = XLSX.utils.decode_range(sheet['!ref']);
+    const headerTarget = norm('运单状态');
+    let headerRow=-1,colIdx=-1;
+    const maxScanRows=Math.min(range.e.r,range.s.r+30);
+
+    // 定位表头
+    outer:for(let r=range.s.r;r<=maxScanRows;r++){
+      for(let c=range.s.c;c<=range.e.c;c++){
+        const cell=sheet[XLSX.utils.encode_cell({r,c})];
+        if(!cell) continue;
+        const v=norm(cell.w ?? cell.v);
+        if(v===headerTarget){ headerRow=r;colIdx=c;break outer; }
+      }
     }
-    try{
-      await loadWorkbook(f);
-      // 首次成功后显示主页面
-      startScreen.style.display = 'none';
-      main.style.display = 'block';
-    }catch(err){
-      alert(err.message || '解析失败，请检查文件格式');
+    if(colIdx===-1) continue;
+
+    // 读取该列
+    for(let r=headerRow+1;r<=range.e.r;r++){
+      const addr=XLSX.utils.encode_cell({r,c:colIdx});
+      const cell=sheet[addr];
+      if(!cell) continue;
+      let val=cell.w ?? cell.v;
+      val=String(val??'').trim();
+      if(!val) continue;
+      totalRows++;
+      totalCounts.set(val,(totalCounts.get(val)||0)+1);
     }
-  });
-
-  async function loadWorkbook(file){
-    summaryEl.textContent = '正在解析…';
-    saveBtn.disabled = true;
-
-    const buf = await file.arrayBuffer();
-    const wb  = XLSX.read(buf, { type:'array' });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const rows  = XLSX.utils.sheet_to_json(sheet, { defval:'', raw:false });
-    if(!rows.length) throw new Error('未读取到数据行');
-
-    // 容错匹配“运单状态”
-    const keys = Object.keys(rows[0] || {});
-    const targetKey = keys.find(k => String(k).trim() === '运单状态')
-                      || keys.find(k => String(k).replace(/\s/g,'').toLowerCase() === '运单状态');
-    if(!targetKey) throw new Error('未找到“运单状态”列');
-
-    // 统计
-    const counter = new Map();
-    let valid = 0;
-    for(const r of rows){
-      const v = String(r[targetKey] ?? '').trim();
-      if(!v) continue;
-      valid++; counter.set(v, (counter.get(v)||0)+1);
-    }
-    const data = Array.from(counter.entries()).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
-
-    summaryEl.innerHTML = `共 <b>${rows.length}</b> 行；有效状态行 <b>${valid}</b>；状态种类 <b>${counter.size}</b>。`;
-    drawPie(data);
-    saveBtn.disabled = false;
   }
 
-  function drawPie(data){
-    chart.setOption({
-      backgroundColor:'transparent',
-      tooltip:{ trigger:'item', formatter: p => `${p.marker}${p.name}<br/>数量：${p.value}<br/>占比：${p.percent}%` },
-      legend:{ type:'scroll', orient:'vertical', left:10, top:20, bottom:20, textStyle:{color:'#cbd5e1'} },
-      series:[{
-        name:'运单状态',
-        type:'pie',
-        radius:['32%','72%'],
-        center:['62%','52%'],
-        itemStyle:{ borderColor:'#0f172a', borderWidth:2 },
-        label:{ color:'#e5e7eb', formatter:'{b}  {d}%'},
-        data
-      }]
-    }, true);
-  }
+  if(totalRows===0){ summaryEl.textContent='未读取到任何“运单状态”数据'; chart.clear(); return; }
 
-  // 下载 PNG
-  saveBtn.addEventListener('click', ()=>{
-    const url = chart.getDataURL({type:'png', pixelRatio:2, backgroundColor:'#0f172a'});
-    const a = document.createElement('a'); a.href = url; a.download = '谁动了我的煎饼-运单状态占比.png'; a.click();
-  });
+  const data = Array.from(totalCounts.entries())
+    .map(([name,value])=>({name,value}))
+    .sort((a,b)=>b.value-a.value);
 
-  // 自适应
-  window.addEventListener('resize', ()=> chart.resize());
+  summaryEl.innerHTML = `共 <b>${totalRows}</b> 条记录，状态种类 <b>${totalCounts.size}</b>。`;
+  drawPie(data);
+  saveBtn.disabled=false;
+}
+
+// 绘图
+function drawPie(data){
+  chart.setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'item',formatter:p=>`${p.marker}${p.name}<br/>数量：${p.value}<br/>占比：${p.percent}%`},
+    legend:{type:'scroll',orient:'vertical',left:10,top:20,bottom:20,textStyle:{color:'#cbd5e1'}},
+    series:[{
+      name:'运单状态',
+      type:'pie',
+      radius:['32%','72%'],
+      center:['62%','52%'],
+      itemStyle:{borderColor:'#0f172a',borderWidth:2},
+      label:{color:'#e5e7eb',formatter:'{b}  {d}%'},
+      data
+    }]
+  },true);
+}
+
+// 下载 PNG
+saveBtn.addEventListener('click',()=>{
+  const url=chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='谁动了我的煎饼-运单状态占比.png';
+  a.click();
+});
+
+window.addEventListener('resize',()=>chart.resize());
 </script>
 </body>
 </html>
