@@ -10,9 +10,11 @@
   :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#94a3b8;--accent:#ef4444}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"PingFang SC",Segoe UI,Roboto}
 
+  /* Start 覆盖层 */
   #start{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10}
   #startBtn{font-size:40px;font-weight:800;padding:18px 64px;border:0;border-radius:18px;background:var(--accent);color:#fff;cursor:pointer}
 
+  /* 主体：标题在最上方，工具栏其下，图表居中 */
   .wrap{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr;gap:14px;place-items:center;padding:20px}
   #titlebar{font-size:28px;font-weight:800;letter-spacing:.5px;text-align:center;margin-top:10px}
   .toolbar{display:flex;gap:10px;align-items:center;justify-content:center}
@@ -22,13 +24,16 @@
 
   #stage{width:min(1400px,94vw);height:calc(88vh - 130px);display:flex;align-items:center;justify-content:center}
   #chart{width:100%;height:100%;background:var(--card);border:1px solid #334155;border-radius:16px}
+
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style>
 </head>
 <body>
 
+<!-- Start -->
 <section id="start"><button id="startBtn">START</button></section>
 
+<!-- Main -->
 <main class="wrap" id="main" style="display:none">
   <div id="titlebar"></div>
 
@@ -45,6 +50,7 @@
 <input type="file" id="file" accept=".xlsx" class="sr-only"/>
 
 <script>
+  // -------- 基本元素 --------
   const start = document.getElementById('start');
   const startBtn = document.getElementById('startBtn');
   const main = document.getElementById('main');
@@ -55,6 +61,7 @@
   const selector = document.getElementById('selector');
   const titlebar = document.getElementById('titlebar');
 
+  // -------- 图表可见后再初始化（修复首屏尺寸问题） --------
   let chart = null, resizeObs = null;
   function ensureChart(){
     if(!chart){
@@ -66,10 +73,10 @@
     }
   }
 
-  // { 派送方 -> Map(状态 -> 计数) }
+  // { 派送方 -> Map(状态 -> 数量) }
   let GROUP = new Map();
 
-  // UI
+  // -------- UI 事件 --------
   const openPicker = ()=>{ fileEl.value=''; fileEl.click(); };
   startBtn.onclick = openPicker;
   upload.onclick   = openPicker;
@@ -86,9 +93,9 @@
     requestAnimationFrame(()=> chart && chart.resize());
   });
 
-  // utils
+  // -------- 工具函数 --------
   const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
-  const fmt = n => n.toLocaleString('en-US');
+  const fmt  = n => Number(n).toLocaleString('en-US');
 
   function findHeaderCandidates(sheet, range, headerText, scanRows=80){
     const target = norm(headerText), heads=[], R=Math.min(range.e.r, range.s.r+scanRows);
@@ -105,12 +112,14 @@
     const startRow = Math.max(headA.r, headB.r) + 1;
     const freqByGroup = new Map();
     let pairCount = 0, emptyStreak = 0, LIMIT = 20;
+
     for(let r=startRow; r<=range.e.r; r++){
       const ca = sheet[XLSX.utils.encode_cell({r, c: headA.c})];
       const cb = sheet[XLSX.utils.encode_cell({r, c: headB.c})];
       let ga = ca ? (ca.w ?? ca.v) : '';
       let sb = cb ? (cb.w ?? cb.v) : '';
-      ga = String(ga ?? '').trim(); sb = String(sb ?? '').trim();
+      ga = String(ga ?? '').trim();
+      sb = String(sb ?? '').trim();
       if(ga && sb){
         pairCount++; emptyStreak = 0;
         if(!freqByGroup.has(ga)) freqByGroup.set(ga, new Map());
@@ -134,6 +143,7 @@
       const sheet = wb.Sheets[sheetName];
       if(!sheet || !sheet['!ref']) continue;
       const range = XLSX.utils.decode_range(sheet['!ref']);
+
       const hDispatch = findHeaderCandidates(sheet, range, '派送方');
       const hStatus   = findHeaderCandidates(sheet, range, '运单状态');
       if(hDispatch.length===0 || hStatus.length===0) continue;
@@ -168,43 +178,86 @@
     save.disabled = false;
   }
 
-  // 标题：仅使用“当前派送方”的数据
+  // -------- 标题（仅使用当前派送方的数据） --------
   function updateTitleBar(groupName, map){
-    const total = Array.from(map.values()).reduce((a,b)=> a + b, 0); // 分母=当前派送方总数
+    const total = Array.from(map.values()).reduce((a,b)=> a + b, 0); // 分母
     const PICK_STATUS = new Set(['快递员收件','派送异常','签收'].map(s => norm(s)));
-    let pick = 0; // 分子=当前派送方内三类之和
+    let pick = 0; // 分子
     for (const [k, v] of map.entries()) if (PICK_STATUS.has(norm(k))) pick += v;
 
     const rate = total ? (pick / total) : 0;
     const suffix = groupName.split('-').pop() || groupName;
-    titlebar.textContent = `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
+    titlebar.textContent =
+      `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
+  // -------- 渲染图表（全部显示，但更有层次） --------
   function renderByGroup(encodedKey){
     ensureChart();
     const key = decodeURIComponent(encodedKey);
     const m = GROUP.get(key) || new Map();
-    const data = Array.from(m.entries()).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
+    const data = Array.from(m.entries())
+      .map(([name,value])=>({name,value}))
+      .sort((a,b)=>b.value-a.value);
 
     updateTitleBar(key, m);
 
     chart.setOption({
       backgroundColor:'transparent',
-      tooltip:{trigger:'item',formatter:p=>`${p.name}  ${fmt(p.value)}｜${p.percent}%`},
-      legend:{type:'scroll',orient:'vertical',left:'4%',top:'center',textStyle:{color:'#cbd5e1'}},
+      tooltip:{
+        trigger:'item',
+        formatter:p=>`${p.name}  ${fmt(p.value)}｜${p.percent.toFixed(2)}%`
+      },
+      legend:{
+        type:'scroll', orient:'vertical', left:'4%', top:'center',
+        textStyle:{color:'#cbd5e1'}
+      },
       series:[{
         name:key,
         type:'pie',
-        radius: window.innerWidth<1200 ? ['46%','82%'] : ['52%','86%'],
-        center:['60%','52%'],
+        radius: ['52%','86%'],      // 给标签留空间
+        center: ['60%','54%'],
+        minAngle: 1.2,              // 很小的块也保留
+        padAngle: 2,                // 扇区之间留缝，层次更清晰
+        avoidLabelOverlap: false,   // 交给 labelLayout 控制
         itemStyle:{borderColor:'#0f172a',borderWidth:2},
-        label:{color:'#e5e7eb',formatter:(p)=>`${p.name} ${p.percent}%`},
+        label:{
+          show:true,
+          alignTo:'labelLine',
+          distanceToLabelLine: 4,
+          formatter: p => `{n|${p.name}} {v|${p.percent.toFixed(1)}%}`,
+          rich:{
+            n:{ color:'#e5e7eb', fontSize:12, lineHeight:18 },
+            v:{ color:'#e5e7eb', fontSize:12, fontWeight:700, lineHeight:18 }
+          }
+        },
+        labelLine:{
+          show:true,
+          smooth:true,
+          length: 14,
+          length2: 16,
+          minTurnAngle: 70,
+          maxSurfaceAngle: 80
+        },
+        // 关键：把重叠标签上下错位 & 让连线尾对齐到文本边缘外
+        labelLayout: params => {
+          const half = chart.getWidth()/2;
+          const isLeft = params.labelRect.x < half;
+          const pts = params.labelLinePoints;
+          pts[2][0] = isLeft
+            ? params.labelRect.x - 6
+            : params.labelRect.x + params.labelRect.width + 6;
+          return { moveOverlap:'shiftY', labelLinePoints: pts };
+        },
+        emphasis:{ scale:false }, // 悬停不放大，避免抖动
         data
       }]
     }, true);
-    requestAnimationFrame(()=> chart && chart.resize());
+
+    requestAnimationFrame(()=> chart.resize());
   }
 
+  // -------- 导出图片 --------
   save.onclick = ()=>{
     const current = selector.options[selector.selectedIndex]?.text || 'chart';
     const url = chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
