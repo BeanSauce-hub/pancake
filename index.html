@@ -10,11 +10,9 @@
   :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#94a3b8;--accent:#ef4444}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"PingFang SC",Segoe UI,Roboto}
 
-  /* Start 覆盖层 */
   #start{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10}
   #startBtn{font-size:40px;font-weight:800;padding:18px 64px;border:0;border-radius:18px;background:var(--accent);color:#fff;cursor:pointer}
 
-  /* 主体 */
   .wrap{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr;gap:14px;place-items:center;padding:20px}
   #titlebar{font-size:28px;font-weight:800;letter-spacing:.5px;text-align:center;margin-top:10px}
   .toolbar{display:flex;gap:10px;align-items:center;justify-content:center}
@@ -69,10 +67,10 @@
     }
   }
 
-  // {派送方 -> Map(状态 -> 数量)}
+  // 数据：{ 派送方 -> Map(状态 -> 数量) }
   let GROUP = new Map();
 
-  // UI 事件
+  // 交互
   const openPicker = ()=>{ fileEl.value=''; fileEl.click(); };
   startBtn.onclick = openPicker;
   upload.onclick   = openPicker;
@@ -172,7 +170,7 @@
     save.disabled = false;
   }
 
-  // 标题（仅当前派送方）
+  // 标题（当前派送方）
   function updateTitleBar(groupName, map){
     const total = Array.from(map.values()).reduce((a,b)=> a + b, 0); // 分母
     const PICK_STATUS = new Set(['快递员收件','派送异常','签收'].map(s => norm(s)));
@@ -185,7 +183,7 @@
       `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
-  // 渲染（专业风：无缝，稳健避让）
+  // 渲染（专业：无缝圆环 + 两行标签 + 上下错位）
   function renderByGroup(encodedKey){
     ensureChart();
     const key = decodeURIComponent(encodedKey);
@@ -207,37 +205,46 @@
       series:[{
         name:key,
         type:'pie',
-        radius: ['52%','86%'],      // 原始比例
-        center: ['60%','54%'],
+        radius: ['52%','86%'],
+        center: ['62%','56%'],   // 环稍向右/向下，给上方与左侧更多空间
         minAngle: 1.2,
-        padAngle: 0,                // 关键：恢复“无缝”
+        padAngle: 0,              // 无缝
         avoidLabelOverlap: false,
         itemStyle:{borderColor:'#0f172a',borderWidth:2},
         label:{
           show:true,
-          alignTo:'labelLine',
+          alignTo:'edge',         // 文本对齐到左右边缘
+          edgeDistance: 12,       // 与边缘留白
           distanceToLabelLine: 4,
-          formatter: p => `{n|${p.name}} {v|${p.percent.toFixed(1)}%}`,
+          // 两行：第一行名称，第二行百分比（更紧凑）
+          formatter: p => `{n|${p.name}}\n{v|${p.percent.toFixed(1)}%}`,
           rich:{
             n:{ color:'#e5e7eb', fontSize:12, lineHeight:18 },
-            v:{ color:'#e5e7eb', fontSize:12, fontWeight:700, lineHeight:18 }
+            v:{ color:'#e5e7eb', fontSize:11, fontWeight:700, lineHeight:16 }
           }
         },
         labelLine:{
           show:true,
           smooth:true,
-          length: 12,
-          length2: 14,
+          length: 10,
+          length2: 26,
           minTurnAngle: 70
         },
-        // 仅做“垂直错位”与线尾对齐到文字边缘，保持专业克制
+        // 上下错位 + 线尾对齐边缘列，避免挤在环边
         labelLayout: params => {
-          const isLeft = params.labelRect.x < chart.getWidth()/2;
+          const w = chart.getWidth();
+          const leftEdge  = 18;
+          const rightEdge = w - 18;
+          const isLeft = params.labelRect.x < w/2;
           const pts = params.labelLinePoints;
-          pts[2][0] = isLeft
-            ? params.labelRect.x - 6
-            : params.labelRect.x + params.labelRect.width + 6;
-          return { moveOverlap:'shiftY', labelLinePoints: pts };
+          const textX = isLeft ? leftEdge : rightEdge;
+          pts[2][0] = textX; // 第二段线尾对齐到边缘列
+          return {
+            moveOverlap: 'shiftY',
+            labelLinePoints: pts,
+            x: isLeft ? leftEdge : undefined,
+            align: isLeft ? 'right' : 'left',
+          };
         },
         emphasis:{ scale:false },
         data
