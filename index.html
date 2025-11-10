@@ -26,13 +26,14 @@
 </head>
 <body>
 
+<!-- 启动页 -->
 <section id="start"><button id="startBtn">START</button></section>
 
+<!-- 主界面 -->
 <main class="wrap" id="main" style="display:none">
   <div id="titlebar"></div>
 
   <div class="toolbar">
-    <button id="upload" class="btn">上传 .xlsx</button>
     <select id="selector" title="派送方"></select>
     <button id="save" class="btn" disabled>下载 PNG</button>
   </div>
@@ -40,6 +41,7 @@
   <div id="stage"><div id="chart" role="img" aria-label="运单状态占比图"></div></div>
 </main>
 
+<!-- 隐藏上传输入 -->
 <input type="file" id="file" accept=".xlsx" class="sr-only"/>
 
 <script>
@@ -47,7 +49,6 @@
   const startBtn = document.getElementById('startBtn');
   const main = document.getElementById('main');
   const fileEl = document.getElementById('file');
-  const upload = document.getElementById('upload');
   const save = document.getElementById('save');
   const selector = document.getElementById('selector');
   const titlebar = document.getElementById('titlebar');
@@ -63,19 +64,15 @@
     }
   }
 
-  // { 派送方 -> Map(状态 -> 计数) }
+  // 数据结构：{ 派送方 -> Map(状态 -> 数量) }
   let GROUP = new Map();
 
-  // UI
-  const openPicker = ()=>{ fileEl.value=''; fileEl.click(); };
-  startBtn.onclick = openPicker;
-  upload.onclick   = openPicker;
-  selector.onchange = ()=> renderByGroup(selector.value);
-
+  // 上传入口：仅第一次出现
+  startBtn.onclick = ()=>{ fileEl.value=''; fileEl.click(); };
   fileEl.addEventListener('change', async (e)=>{
     const f = e.target.files?.[0];
     if(!f) return;
-    if(!f.name.toLowerCase().endsWith('.xlsx')){ alert('只支持 .xlsx'); return; }
+    if(!f.name.toLowerCase().endsWith('.xlsx')){ alert('只支持 .xlsx 文件'); return; }
     await loadWorkbook(f);
     start.style.display='none';
     main.style.display='grid';
@@ -83,7 +80,7 @@
     requestAnimationFrame(()=> chart && chart.resize());
   });
 
-  // utils
+  // 通用函数
   const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
   const fmt = n => n.toLocaleString('en-US');
 
