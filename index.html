@@ -14,7 +14,7 @@
   #start{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10}
   #startBtn{font-size:40px;font-weight:800;padding:18px 64px;border:0;border-radius:18px;background:var(--accent);color:#fff;cursor:pointer}
 
-  /* 主体：标题在最上方，工具栏其下，图表居中 */
+  /* 主体 */
   .wrap{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr;gap:14px;place-items:center;padding:20px}
   #titlebar{font-size:28px;font-weight:800;letter-spacing:.5px;text-align:center;margin-top:10px}
   .toolbar{display:flex;gap:10px;align-items:center;justify-content:center}
@@ -30,10 +30,8 @@
 </head>
 <body>
 
-<!-- Start -->
 <section id="start"><button id="startBtn">START</button></section>
 
-<!-- Main -->
 <main class="wrap" id="main" style="display:none">
   <div id="titlebar"></div>
 
@@ -50,7 +48,6 @@
 <input type="file" id="file" accept=".xlsx" class="sr-only"/>
 
 <script>
-  // -------- 基本元素 --------
   const start = document.getElementById('start');
   const startBtn = document.getElementById('startBtn');
   const main = document.getElementById('main');
@@ -61,7 +58,6 @@
   const selector = document.getElementById('selector');
   const titlebar = document.getElementById('titlebar');
 
-  // -------- 图表可见后再初始化（修复首屏尺寸问题） --------
   let chart = null, resizeObs = null;
   function ensureChart(){
     if(!chart){
@@ -73,10 +69,10 @@
     }
   }
 
-  // { 派送方 -> Map(状态 -> 数量) }
+  // {派送方 -> Map(状态 -> 数量)}
   let GROUP = new Map();
 
-  // -------- UI 事件 --------
+  // UI 事件
   const openPicker = ()=>{ fileEl.value=''; fileEl.click(); };
   startBtn.onclick = openPicker;
   upload.onclick   = openPicker;
@@ -93,7 +89,7 @@
     requestAnimationFrame(()=> chart && chart.resize());
   });
 
-  // -------- 工具函数 --------
+  // 工具函数
   const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
   const fmt  = n => Number(n).toLocaleString('en-US');
 
@@ -112,14 +108,12 @@
     const startRow = Math.max(headA.r, headB.r) + 1;
     const freqByGroup = new Map();
     let pairCount = 0, emptyStreak = 0, LIMIT = 20;
-
     for(let r=startRow; r<=range.e.r; r++){
       const ca = sheet[XLSX.utils.encode_cell({r, c: headA.c})];
       const cb = sheet[XLSX.utils.encode_cell({r, c: headB.c})];
       let ga = ca ? (ca.w ?? ca.v) : '';
       let sb = cb ? (cb.w ?? cb.v) : '';
-      ga = String(ga ?? '').trim();
-      sb = String(sb ?? '').trim();
+      ga = String(ga ?? '').trim(); sb = String(sb ?? '').trim();
       if(ga && sb){
         pairCount++; emptyStreak = 0;
         if(!freqByGroup.has(ga)) freqByGroup.set(ga, new Map());
@@ -178,7 +172,7 @@
     save.disabled = false;
   }
 
-  // -------- 标题（仅使用当前派送方的数据） --------
+  // 标题（仅当前派送方）
   function updateTitleBar(groupName, map){
     const total = Array.from(map.values()).reduce((a,b)=> a + b, 0); // 分母
     const PICK_STATUS = new Set(['快递员收件','派送异常','签收'].map(s => norm(s)));
@@ -191,14 +185,12 @@
       `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
-  // -------- 渲染图表（全部显示，但更有层次） --------
+  // 渲染（专业风：无缝，稳健避让）
   function renderByGroup(encodedKey){
     ensureChart();
     const key = decodeURIComponent(encodedKey);
     const m = GROUP.get(key) || new Map();
-    const data = Array.from(m.entries())
-      .map(([name,value])=>({name,value}))
-      .sort((a,b)=>b.value-a.value);
+    const data = Array.from(m.entries()).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
 
     updateTitleBar(key, m);
 
@@ -215,11 +207,11 @@
       series:[{
         name:key,
         type:'pie',
-        radius: ['52%','86%'],      // 给标签留空间
+        radius: ['52%','86%'],      // 原始比例
         center: ['60%','54%'],
-        minAngle: 1.2,              // 很小的块也保留
-        padAngle: 2,                // 扇区之间留缝，层次更清晰
-        avoidLabelOverlap: false,   // 交给 labelLayout 控制
+        minAngle: 1.2,
+        padAngle: 0,                // 关键：恢复“无缝”
+        avoidLabelOverlap: false,
         itemStyle:{borderColor:'#0f172a',borderWidth:2},
         label:{
           show:true,
@@ -234,22 +226,20 @@
         labelLine:{
           show:true,
           smooth:true,
-          length: 14,
-          length2: 16,
-          minTurnAngle: 70,
-          maxSurfaceAngle: 80
+          length: 12,
+          length2: 14,
+          minTurnAngle: 70
         },
-        // 关键：把重叠标签上下错位 & 让连线尾对齐到文本边缘外
+        // 仅做“垂直错位”与线尾对齐到文字边缘，保持专业克制
         labelLayout: params => {
-          const half = chart.getWidth()/2;
-          const isLeft = params.labelRect.x < half;
+          const isLeft = params.labelRect.x < chart.getWidth()/2;
           const pts = params.labelLinePoints;
           pts[2][0] = isLeft
             ? params.labelRect.x - 6
             : params.labelRect.x + params.labelRect.width + 6;
           return { moveOverlap:'shiftY', labelLinePoints: pts };
         },
-        emphasis:{ scale:false }, // 悬停不放大，避免抖动
+        emphasis:{ scale:false },
         data
       }]
     }, true);
@@ -257,7 +247,7 @@
     requestAnimationFrame(()=> chart.resize());
   }
 
-  // -------- 导出图片 --------
+  // 导出
   save.onclick = ()=>{
     const current = selector.options[selector.selectedIndex]?.text || 'chart';
     const url = chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
