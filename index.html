@@ -10,47 +10,56 @@
   :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#94a3b8;--accent:#ef4444}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"PingFang SC",Segoe UI,Roboto}
 
-  /* START 覆盖层 */
+  /* 首次上传覆盖层 */
   #start{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10}
   #startBtn{font-size:40px;font-weight:800;padding:18px 64px;border:0;border-radius:18px;background:var(--accent);color:#fff;cursor:pointer}
 
-  /* 主体 */
-  .wrap{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr;gap:14px;place-items:center;padding:20px;position:relative}
+  /* 主体布局 */
+  .wrap{min-height:100vh;display:grid;grid-template-rows:auto 1fr;gap:14px;place-items:center;padding:20px;position:relative}
   #titlebar{font-size:28px;font-weight:800;letter-spacing:.5px;text-align:center;margin-top:10px}
 
-  /* 顶部：仅保留下拉；下载按钮固定在右上角 */
-  .toolbar{display:flex;gap:10px;align-items:center;justify-content:center}
-  .btn,select{border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:10px;padding:6px 12px;cursor:pointer}
+  /* 右上角下载按钮 */
+  .btn{border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:10px;padding:6px 12px;cursor:pointer}
   .btn:disabled{opacity:.5;cursor:not-allowed}
-  /* 右上角的下载按钮 */
   #save{position:absolute;top:16px;right:24px}
 
-  #stage{width:min(1400px,94vw);height:calc(88vh - 130px);display:flex;align-items:center;justify-content:center}
+  /* 图表舞台：相对定位，放置下拉菜单 */
+  #stage{position:relative;width:min(1400px,94vw);height:calc(88vh - 120px);display:flex;align-items:center;justify-content:center}
   #chart{width:100%;height:100%;background:var(--card);border:1px solid #334155;border-radius:16px}
+
+  /* 下拉菜单固定在卡片内左上角 */
+  #selector{
+    position:absolute;
+    top:26px;         /* 距离卡片上边距 */
+    left:34px;        /* 距离卡片左边距 */
+    z-index:2;
+    border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:12px;padding:8px 14px;
+    box-shadow:0 0 0 2px rgba(255,255,255,0.06) inset;
+  }
 
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style>
 </head>
 <body>
 
-<!-- 启动页（首次上传） -->
+<!-- 启动页（首次上传 .xlsx） -->
 <section id="start"><button id="startBtn">START</button></section>
 
 <!-- 主界面 -->
 <main class="wrap" id="main" style="display:none">
   <div id="titlebar"></div>
 
-  <div class="toolbar">
-    <select id="selector" title="派送方"></select>
-  </div>
-
-  <!-- 右上角下载按钮 -->
+  <!-- 右上角下载 -->
   <button id="save" class="btn" disabled>下载 PNG</button>
 
-  <div id="stage"><div id="chart" role="img" aria-label="运单状态占比图"></div></div>
+  <!-- 图表卡片 + 左上角下拉 -->
+  <div id="stage">
+    <select id="selector" title="派送方"></select>
+    <div id="chart" role="img" aria-label="运单状态占比图"></div>
+  </div>
 </main>
 
-<!-- 隐藏文件选择器 -->
+<!-- 隐藏文件选择器（仅首次） -->
 <input type="file" id="file" accept=".xlsx" class="sr-only"/>
 
 <script>
@@ -63,6 +72,7 @@
   const titlebar = document.getElementById('titlebar');
 
   let chart = null, resizeObs = null;
+
   function ensureChart(){
     if(!chart){
       const el = document.getElementById('chart');
@@ -108,7 +118,6 @@
     const startRow = Math.max(headA.r, headB.r) + 1;
     const freqByGroup = new Map();
     let pairCount = 0, emptyStreak = 0, LIMIT = 20;
-
     for(let r=startRow; r<=range.e.r; r++){
       const ca = sheet[XLSX.utils.encode_cell({r, c: headA.c})];
       const cb = sheet[XLSX.utils.encode_cell({r, c: headB.c})];
@@ -204,7 +213,7 @@
     requestAnimationFrame(()=> chart && chart.resize());
   }
 
-  // 下载按钮（固定右上角）
+  // 下载 PNG
   save.onclick = ()=>{
     const current = selector.options[selector.selectedIndex]?.text || 'chart';
     const url = chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
