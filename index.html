@@ -18,7 +18,6 @@
   .toolbar{display:flex;gap:10px;align-items:center;justify-content:center}
   .btn,select{border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:10px;padding:6px 12px;cursor:pointer}
   .btn:disabled{opacity:.5;cursor:not-allowed}
-  .badge{color:var(--muted);font-size:12px;padding-left:6px}
 
   #stage{width:min(1400px,94vw);height:calc(88vh - 130px);display:flex;align-items:center;justify-content:center}
   #chart{width:100%;height:100%;background:var(--card);border:1px solid #334155;border-radius:16px}
@@ -36,7 +35,6 @@
     <button id="upload" class="btn">上传 .xlsx</button>
     <select id="selector" title="派送方"></select>
     <button id="save" class="btn" disabled>下载 PNG</button>
-    <span id="badge" class="badge"></span>
   </div>
 
   <div id="stage"><div id="chart" role="img" aria-label="运单状态占比图"></div></div>
@@ -51,7 +49,6 @@
   const fileEl = document.getElementById('file');
   const upload = document.getElementById('upload');
   const save = document.getElementById('save');
-  const badge = document.getElementById('badge');
   const selector = document.getElementById('selector');
   const titlebar = document.getElementById('titlebar');
 
@@ -125,10 +122,9 @@
   }
 
   async function loadWorkbook(file){
-    save.disabled = true; badge.textContent = ''; GROUP = new Map();
+    save.disabled = true; GROUP = new Map();
     const buf = await file.arrayBuffer();
     const wb  = XLSX.read(buf,{type:'array'});
-    let totalRows = 0;
 
     for(const sheetName of wb.SheetNames){
       const sheet = wb.Sheets[sheetName];
@@ -147,7 +143,6 @@
       }
       if(best.pairCount <= 0) continue;
 
-      totalRows += best.pairCount;
       for(const [dispatch, inner] of best.freqByGroup.entries()){
         if(!GROUP.has(dispatch)) GROUP.set(dispatch, new Map());
         const g = GROUP.get(dispatch);
@@ -155,29 +150,27 @@
       }
     }
 
-    if(totalRows===0){
+    if(GROUP.size===0){
       if(chart){ chart.clear(); }
-      selector.innerHTML=''; badge.textContent='无数据'; titlebar.textContent='';
+      selector.innerHTML=''; titlebar.textContent='';
       return;
     }
 
     const options = Array.from(GROUP.keys()).sort((a,b)=>a.localeCompare(b,'zh'));
     selector.innerHTML = options.map(v=>`<option value="${encodeURIComponent(v)}">${v}</option>`).join('');
-    badge.textContent = `总计 ${fmt(totalRows)}`;
     renderByGroup(encodeURIComponent(options[0]));
     save.disabled = false;
   }
 
-  // 标题：仅使用“当前派送方”的数据
   function updateTitleBar(groupName, map){
-    const total = Array.from(map.values()).reduce((a,b)=> a + b, 0); // 分母=当前派送方总数
+    const total = Array.from(map.values()).reduce((a,b)=> a + b, 0);
     const PICK_STATUS = new Set(['快递员收件','派送异常','签收'].map(s => norm(s)));
-    let pick = 0; // 分子=当前派送方内三类之和
+    let pick = 0;
     for (const [k, v] of map.entries()) if (PICK_STATUS.has(norm(k))) pick += v;
-
     const rate = total ? (pick / total) : 0;
     const suffix = groupName.split('-').pop() || groupName;
-    titlebar.textContent = `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
+    titlebar.textContent =
+      `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
   function renderByGroup(encodedKey){
@@ -185,7 +178,6 @@
     const key = decodeURIComponent(encodedKey);
     const m = GROUP.get(key) || new Map();
     const data = Array.from(m.entries()).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
-
     updateTitleBar(key, m);
 
     chart.setOption({
