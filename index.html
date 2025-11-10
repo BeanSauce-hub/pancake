@@ -22,7 +22,6 @@
 
   #stage{width:min(1400px,94vw);height:calc(88vh - 130px);display:flex;align-items:center;justify-content:center}
   #chart{width:100%;height:100%;background:var(--card);border:1px solid #334155;border-radius:16px}
-
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style>
 </head>
@@ -67,10 +66,8 @@
     }
   }
 
-  // 数据：{ 派送方 -> Map(状态 -> 数量) }
-  let GROUP = new Map();
+  let GROUP = new Map(); // {派送方 -> Map(状态 -> 数量)}
 
-  // 交互
   const openPicker = ()=>{ fileEl.value=''; fileEl.click(); };
   startBtn.onclick = openPicker;
   upload.onclick   = openPicker;
@@ -87,7 +84,6 @@
     requestAnimationFrame(()=> chart && chart.resize());
   });
 
-  // 工具函数
   const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
   const fmt  = n => Number(n).toLocaleString('en-US');
 
@@ -170,26 +166,22 @@
     save.disabled = false;
   }
 
-  // 标题（当前派送方）
   function updateTitleBar(groupName, map){
-    const total = Array.from(map.values()).reduce((a,b)=> a + b, 0); // 分母
+    const total = Array.from(map.values()).reduce((a,b)=> a + b, 0);
     const PICK_STATUS = new Set(['快递员收件','派送异常','签收'].map(s => norm(s)));
-    let pick = 0; // 分子
+    let pick = 0;
     for (const [k, v] of map.entries()) if (PICK_STATUS.has(norm(k))) pick += v;
-
     const rate = total ? (pick / total) : 0;
     const suffix = groupName.split('-').pop() || groupName;
     titlebar.textContent =
       `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
-  // 渲染（专业：无缝圆环 + 两行标签 + 上下错位）
   function renderByGroup(encodedKey){
     ensureChart();
     const key = decodeURIComponent(encodedKey);
     const m = GROUP.get(key) || new Map();
     const data = Array.from(m.entries()).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
-
     updateTitleBar(key, m);
 
     chart.setOption({
@@ -206,45 +198,35 @@
         name:key,
         type:'pie',
         radius: ['52%','86%'],
-        center: ['62%','56%'],   // 环稍向右/向下，给上方与左侧更多空间
+        center: ['60%','54%'],
         minAngle: 1.2,
-        padAngle: 0,              // 无缝
+        padAngle: 0,                // 无缝专业
         avoidLabelOverlap: false,
         itemStyle:{borderColor:'#0f172a',borderWidth:2},
         label:{
           show:true,
-          alignTo:'edge',         // 文本对齐到左右边缘
-          edgeDistance: 12,       // 与边缘留白
+          alignTo:'labelLine',
           distanceToLabelLine: 4,
-          // 两行：第一行名称，第二行百分比（更紧凑）
-          formatter: p => `{n|${p.name}}\n{v|${p.percent.toFixed(1)}%}`,
+          formatter: p => `{n|${p.name}} {v|${p.percent.toFixed(1)}%}`,
           rich:{
             n:{ color:'#e5e7eb', fontSize:12, lineHeight:18 },
-            v:{ color:'#e5e7eb', fontSize:11, fontWeight:700, lineHeight:16 }
+            v:{ color:'#e5e7eb', fontSize:12, fontWeight:700, lineHeight:18 }
           }
         },
         labelLine:{
           show:true,
           smooth:true,
-          length: 10,
-          length2: 26,
+          length: 12,
+          length2: 14,
           minTurnAngle: 70
         },
-        // 上下错位 + 线尾对齐边缘列，避免挤在环边
         labelLayout: params => {
-          const w = chart.getWidth();
-          const leftEdge  = 18;
-          const rightEdge = w - 18;
-          const isLeft = params.labelRect.x < w/2;
+          const isLeft = params.labelRect.x < chart.getWidth()/2;
           const pts = params.labelLinePoints;
-          const textX = isLeft ? leftEdge : rightEdge;
-          pts[2][0] = textX; // 第二段线尾对齐到边缘列
-          return {
-            moveOverlap: 'shiftY',
-            labelLinePoints: pts,
-            x: isLeft ? leftEdge : undefined,
-            align: isLeft ? 'right' : 'left',
-          };
+          pts[2][0] = isLeft
+            ? params.labelRect.x - 6
+            : params.labelRect.x + params.labelRect.width + 6;
+          return { moveOverlap:'shiftY', labelLinePoints: pts };
         },
         emphasis:{ scale:false },
         data
@@ -254,7 +236,6 @@
     requestAnimationFrame(()=> chart.resize());
   }
 
-  // 导出
   save.onclick = ()=>{
     const current = selector.options[selector.selectedIndex]?.text || 'chart';
     const url = chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
