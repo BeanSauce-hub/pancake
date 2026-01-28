@@ -33,6 +33,26 @@
     box-shadow:0 0 0 2px rgba(255,255,255,0.06) inset;
   }
 
+  /* 左下角文本框 */
+  #statusBox{
+    position:absolute;
+    left:34px;
+    bottom:26px;
+    width:420px;
+    min-height:110px;
+    z-index:2;
+    background:#0b1222;
+    border:1px solid #334155;
+    border-radius:14px;
+    padding:14px 16px;
+    color:#e5e7eb;
+    font-size:16px;
+    line-height:1.7;
+    letter-spacing:.2px;
+    box-shadow:0 0 0 2px rgba(255,255,255,0.03) inset;
+    white-space:pre-line;
+  }
+
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style>
 </head>
@@ -47,6 +67,7 @@
 
   <div id="stage">
     <select id="selector" title="派送方"></select>
+    <div id="statusBox"></div>
     <div id="chart" role="img" aria-label="运单状态占比图"></div>
   </div>
 </main>
@@ -61,6 +82,7 @@
   const save = document.getElementById('save');
   const selector = document.getElementById('selector');
   const titlebar = document.getElementById('titlebar');
+  const statusBox = document.getElementById('statusBox');
 
   let chart = null, resizeObs = null;
   function ensureChart(){
@@ -76,7 +98,7 @@
   // { 派送方 -> Map(状态 -> 数量) }
   let GROUP = new Map();
 
-  // 绑定下拉切换（修复点）
+  // 下拉切换
   selector.onchange = () => renderByGroup(selector.value);
 
   // 首次上传
@@ -161,6 +183,7 @@
     if(GROUP.size===0){
       if(chart){ chart.clear(); }
       selector.innerHTML=''; titlebar.textContent='';
+      statusBox.textContent='';
       return;
     }
 
@@ -181,12 +204,40 @@
       `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
+  // 左下角文本框：忽略“快递员收件/签收/派送异常”，只统计错分类与未收到
+  function updateStatusBox(map){
+    const get = (name) => {
+      const target = norm(name);
+      for (const [k, v] of map.entries()){
+        if (norm(k) === target) return v || 0;
+      }
+      return 0;
+    };
+
+    const dspMissort =
+        get('退回站点')
+      + get('集包')
+      + get('退回转运中心');
+
+    const outMissort = get('上架');
+
+    const notReceived = get('站点签入');
+
+    const dspText = dspMissort > 0 ? `DSP错分${fmt(dspMissort)}` : `DSP错分未分类`;
+    const outText = outMissort > 0 ? `外城错分${fmt(outMissort)}` : `外城错分未分类`;
+    const nrText  = notReceived > 0 ? `未收到${fmt(notReceived)}` : `未收到未分类`;
+
+    statusBox.textContent = `${dspText}\n${outText}\n${nrText}`;
+  }
+
   function renderByGroup(encodedKey){
     ensureChart();
     const key = decodeURIComponent(encodedKey);
     const m = GROUP.get(key) || new Map();
     const data = Array.from(m.entries()).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
+
     updateTitleBar(key, m);
+    updateStatusBox(m);
 
     chart.setOption({
       backgroundColor:'transparent',
