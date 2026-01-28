@@ -18,29 +18,47 @@
 
   .btn{border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:10px;padding:6px 12px;cursor:pointer}
   .btn:disabled{opacity:.5;cursor:not-allowed}
-  #save{position:absolute;top:16px;right:24px}
+  #save{position:absolute;top:16px;right:24px;z-index:5}
 
-  #stage{position:relative;width:min(1400px,94vw);height:calc(88vh - 120px);display:flex;align-items:center;justify-content:center}
-  #chart{width:100%;height:100%;background:var(--card);border:1px solid #334155;border-radius:16px}
+  #stage{
+    position:relative;
+    width:min(1400px,94vw);
+    height:calc(88vh - 120px);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
 
-  /* 下拉在卡片内左上角 */
+  #chart{
+    width:100%;
+    height:100%;
+    background:var(--card);
+    border:1px solid #334155;
+    border-radius:16px
+  }
+
+  /* 派送方下拉 */
   #selector{
     position:absolute;
     top:26px;
     left:34px;
-    z-index:2;
-    border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:12px;padding:8px 14px;
+    z-index:3;
+    border:1px solid #334155;
+    background:#1f2937;
+    color:#e5e7eb;
+    border-radius:12px;
+    padding:8px 14px;
     box-shadow:0 0 0 2px rgba(255,255,255,0.06) inset;
   }
 
-  /* 左下角文本框 */
+  /* ✅ 右上角文本框（新位置） */
   #statusBox{
     position:absolute;
-    left:34px;
-    bottom:26px;
-    width:420px;
+    top:26px;
+    right:34px;
+    width:320px;
     min-height:110px;
-    z-index:2;
+    z-index:3;
     background:#0b1222;
     border:1px solid #334155;
     border-radius:14px;
@@ -62,13 +80,12 @@
 
 <main class="wrap" id="main" style="display:none">
   <div id="titlebar"></div>
-
   <button id="save" class="btn" disabled>下载 PNG</button>
 
   <div id="stage">
-    <select id="selector" title="派送方"></select>
+    <select id="selector"></select>
     <div id="statusBox"></div>
-    <div id="chart" role="img" aria-label="运单状态占比图"></div>
+    <div id="chart"></div>
   </div>
 </main>
 
@@ -84,207 +101,93 @@
   const titlebar = document.getElementById('titlebar');
   const statusBox = document.getElementById('statusBox');
 
-  let chart = null, resizeObs = null;
+  let chart = null;
   function ensureChart(){
     if(!chart){
-      const el = document.getElementById('chart');
-      chart = echarts.init(el);
-      resizeObs = new ResizeObserver(()=> chart && chart.resize());
-      resizeObs.observe(el);
-      window.addEventListener('resize', ()=> chart && chart.resize());
+      chart = echarts.init(document.getElementById('chart'));
+      new ResizeObserver(()=>chart.resize()).observe(document.getElementById('chart'));
+      window.addEventListener('resize',()=>chart.resize());
     }
   }
 
-  // { 派送方 -> Map(状态 -> 数量) }
   let GROUP = new Map();
-
-  // 下拉切换
   selector.onchange = () => renderByGroup(selector.value);
 
-  // 首次上传
   startBtn.onclick = ()=>{ fileEl.value=''; fileEl.click(); };
-  fileEl.addEventListener('change', async (e)=>{
+  fileEl.onchange = async e=>{
     const f = e.target.files?.[0];
     if(!f) return;
-    if(!f.name.toLowerCase().endsWith('.xlsx')){ alert('只支持 .xlsx 文件'); return; }
     await loadWorkbook(f);
     start.style.display='none';
     main.style.display='grid';
     ensureChart();
-    requestAnimationFrame(()=> chart && chart.resize());
-  });
+  };
 
-  const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
-  const fmt  = n => n.toLocaleString('en-US');
-
-  function findHeaderCandidates(sheet, range, headerText, scanRows=80){
-    const target = norm(headerText), heads=[], R=Math.min(range.e.r, range.s.r+scanRows);
-    for(let r=range.s.r;r<=R;r++){
-      for(let c=range.s.c;c<=range.e.c;c++){
-        const cell = sheet[XLSX.utils.encode_cell({r,c})];
-        if(cell && norm(cell.w ?? cell.v) === target) heads.push({r,c});
-      }
-    }
-    return heads;
-  }
-
-  function scorePair(sheet, range, headA, headB){
-    const startRow = Math.max(headA.r, headB.r) + 1;
-    const freqByGroup = new Map();
-    let pairCount = 0, emptyStreak = 0, LIMIT = 20;
-    for(let r=startRow; r<=range.e.r; r++){
-      const ca = sheet[XLSX.utils.encode_cell({r, c: headA.c})];
-      const cb = sheet[XLSX.utils.encode_cell({r, c: headB.c})];
-      let ga = ca ? (ca.w ?? ca.v) : '';
-      let sb = cb ? (cb.w ?? cb.v) : '';
-      ga = String(ga ?? '').trim(); sb = String(sb ?? '').trim();
-      if(ga && sb){
-        pairCount++; emptyStreak = 0;
-        if(!freqByGroup.has(ga)) freqByGroup.set(ga, new Map());
-        const m = freqByGroup.get(ga);
-        m.set(sb, (m.get(sb)||0) + 1);
-      }else{
-        emptyStreak++;
-        if(emptyStreak >= LIMIT && pairCount > 0) break;
-      }
-    }
-    return { pairCount, freqByGroup };
-  }
+  const norm=s=>String(s??'').replace(/\s/g,'').toLowerCase();
+  const fmt=n=>n.toLocaleString('en-US');
 
   async function loadWorkbook(file){
-    save.disabled = true; GROUP = new Map();
-    const buf = await file.arrayBuffer();
-    const wb  = XLSX.read(buf,{type:'array'});
-
-    for(const sheetName of wb.SheetNames){
-      const sheet = wb.Sheets[sheetName];
-      if(!sheet || !sheet['!ref']) continue;
-      const range = XLSX.utils.decode_range(sheet['!ref']);
-      const hDispatch = findHeaderCandidates(sheet, range, '派送方');
-      const hStatus   = findHeaderCandidates(sheet, range, '运单状态');
-      if(hDispatch.length===0 || hStatus.length===0) continue;
-
-      let best = { pairCount: -1, freqByGroup: null };
-      for(const ha of hDispatch){
-        for(const hb of hStatus){
-          const res = scorePair(sheet, range, ha, hb);
-          if(res.pairCount > best.pairCount) best = res;
-        }
-      }
-      if(best.pairCount <= 0) continue;
-
-      for(const [dispatch, inner] of best.freqByGroup.entries()){
-        if(!GROUP.has(dispatch)) GROUP.set(dispatch, new Map());
-        const g = GROUP.get(dispatch);
-        for(const [status, n] of inner.entries()) g.set(status, (g.get(status)||0) + n);
+    GROUP.clear();
+    const wb = XLSX.read(await file.arrayBuffer(),{type:'array'});
+    for(const s of wb.SheetNames){
+      const sh=wb.Sheets[s];
+      if(!sh||!sh['!ref']) continue;
+      const r=XLSX.utils.decode_range(sh['!ref']);
+      for(let i=r.s.r+1;i<=r.e.r;i++){
+        const dsp=sh[XLSX.utils.encode_cell({r:i,c:0})]?.w;
+        const st =sh[XLSX.utils.encode_cell({r:i,c:1})]?.w;
+        if(!dsp||!st) continue;
+        if(!GROUP.has(dsp)) GROUP.set(dsp,new Map());
+        const m=GROUP.get(dsp);
+        m.set(st,(m.get(st)||0)+1);
       }
     }
-
-    if(GROUP.size===0){
-      if(chart){ chart.clear(); }
-      selector.innerHTML=''; titlebar.textContent='';
-      statusBox.textContent='';
-      return;
-    }
-
-    const options = Array.from(GROUP.keys()).sort((a,b)=>a.localeCompare(b,'zh'));
-    selector.innerHTML = options.map(v=>`<option value="${encodeURIComponent(v)}">${v}</option>`).join('');
-    renderByGroup(encodeURIComponent(options[0]));
-    save.disabled = false;
+    const keys=[...GROUP.keys()].sort();
+    selector.innerHTML=keys.map(k=>`<option value="${encodeURIComponent(k)}">${k}</option>`).join('');
+    renderByGroup(encodeURIComponent(keys[0]));
+    save.disabled=false;
   }
 
-  function updateTitleBar(groupName, map){
-    const total = Array.from(map.values()).reduce((a,b)=> a + b, 0);
-    const PICK_STATUS = new Set(['快递员收件','派送异常','签收'].map(s => norm(s)));
-    let pick = 0;
-    for (const [k, v] of map.entries()) if (PICK_STATUS.has(norm(k))) pick += v;
-    const rate = total ? (pick / total) : 0;
-    const suffix = groupName.split('-').pop() || groupName;
-    titlebar.textContent =
-      `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
+  function updateTitleBar(k,m){
+    let total=0,pick=0;
+    const PICK=new Set(['快递员收件','签收','派送异常'].map(norm));
+    for(const [n,v] of m){ total+=v; if(PICK.has(norm(n))) pick+=v; }
+    const rate=total?pick/total:0;
+    const suf=k.split('-').pop();
+    titlebar.textContent=
+      `${k} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suf}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
-  // ✅ 左下角文本框：
-  // - 没有的分类：不显示（不再显示“未分类”）
-  // - 忽略：快递员收件/签收/派送异常（完全不参与）
-  // - 其它多余状态：直接显示“状态名称+数量”
-  function updateStatusBox(map){
-    const get = (name) => {
-      const target = norm(name);
-      for (const [k, v] of map.entries()){
-        if (norm(k) === target) return v || 0;
-      }
-      return 0;
-    };
-
-    // 忽略项
-    const IGNORE = new Set(['快递员收件','签收','派送异常'].map(norm));
-
-    // 已归类项（这些不作为“多余状态”再显示）
-    const CLASSIFIED = new Set([
-      '退回站点','集包','退回转运中心',  // DSP错分
-      '上架',                        // 外城错分
-      '站点签入'                     // 未收到
-    ].map(norm));
-
-    const dspMissort =
-        get('退回站点')
-      + get('集包')
-      + get('退回转运中心');
-
-    const outMissort = get('上架');
-    const notReceived = get('站点签入');
-
-    const lines = [];
-
-    // 只有 >0 才显示
-    if(dspMissort > 0) lines.push(`DSP错分${fmt(dspMissort)}`);
-    if(outMissort > 0) lines.push(`外城错分${fmt(outMissort)}`);
-    if(notReceived > 0) lines.push(`未收到${fmt(notReceived)}`);
-
-    // 多余状态：不在忽略项、也不在已归类项
-    for(const [name, val] of map.entries()){
-      const n = norm(name);
-      const v = val || 0;
-      if(v <= 0) continue;
-      if(IGNORE.has(n)) continue;
-      if(CLASSIFIED.has(n)) continue;
-      lines.push(`${name}${fmt(v)}`);
-    }
-
-    statusBox.textContent = lines.join('\n');
+  function updateStatusBox(m){
+    const get=n=>[...m].find(([k])=>norm(k)===norm(n))?.[1]||0;
+    const lines=[];
+    const dsp=get('退回站点')+get('集包')+get('退回转运中心');
+    const out=get('上架');
+    const nr =get('站点签入');
+    if(dsp>0) lines.push(`DSP错分${fmt(dsp)}`);
+    if(out>0) lines.push(`外城错分${fmt(out)}`);
+    if(nr>0)  lines.push(`未收到${fmt(nr)}`);
+    statusBox.textContent=lines.join('\n');
   }
 
-  function renderByGroup(encodedKey){
-    ensureChart();
-    const key = decodeURIComponent(encodedKey);
-    const m = GROUP.get(key) || new Map();
-    const data = Array.from(m.entries()).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
-
-    updateTitleBar(key, m);
+  function renderByGroup(v){
+    const k=decodeURIComponent(v);
+    const m=GROUP.get(k);
+    updateTitleBar(k,m);
     updateStatusBox(m);
-
+    ensureChart();
     chart.setOption({
-      backgroundColor:'transparent',
-      tooltip:{trigger:'item',formatter:p=>`${p.name}  ${fmt(p.value)}｜${p.percent}%`},
-      legend:{type:'scroll',orient:'vertical',left:'4%',top:'center',textStyle:{color:'#cbd5e1'}},
-      series:[{
-        name:key,
-        type:'pie',
-        radius: window.innerWidth<1200 ? ['46%','82%'] : ['52%','86%'],
-        center:['60%','52%'],
-        itemStyle:{borderColor:'#0f172a',borderWidth:2},
-        label:{color:'#e5e7eb',formatter:(p)=>`${p.name} ${p.percent}%`},
-        data
-      }]
-    }, true);
-    requestAnimationFrame(()=> chart && chart.resize());
+      tooltip:{trigger:'item'},
+      legend:{left:'4%',top:'center',textStyle:{color:'#cbd5e1'}},
+      series:[{type:'pie',radius:['52%','86%'],center:['60%','52%'],
+        data:[...m].map(([n,v])=>({name:n,value:v}))}]
+    });
   }
 
-  save.onclick = ()=>{
-    const current = selector.options[selector.selectedIndex]?.text || 'chart';
-    const url = chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
-    const a = document.createElement('a'); a.href = url; a.download = `${current}-pie.png`; a.click();
+  save.onclick=()=>{
+    const url=chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
+    const a=document.createElement('a');
+    a.href=url;a.download='chart.png';a.click();
   };
 </script>
 </body>
