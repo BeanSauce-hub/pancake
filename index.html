@@ -46,7 +46,7 @@
     padding:12px 12px 10px 12px;
     color:#e5e7eb;
     box-shadow:0 0 0 2px rgba(255,255,255,0.03) inset;
-    max-width:min(320px, 36vw);
+    max-width:min(300px, 34vw);
   }
   #statusText{
     white-space:pre-line;
@@ -54,6 +54,8 @@
     line-height:1.7;
     letter-spacing:.2px;
   }
+
+  /* Copy 按钮在文本下方（紧凑） */
   #copyBtn{
     margin-top:10px;
     display:inline-flex;
@@ -69,17 +71,11 @@
     font-weight:700;
   }
   #copyBtn:active{transform:translateY(1px)}
-  #copyBtn .ico{
-    width:18px;height:18px;display:inline-block;
-  }
+  #copyBtn .ico{width:18px;height:18px;display:inline-block}
   #copyBtn .ico svg{width:18px;height:18px;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-  #copyBtn.copied{
-    background:#0f1a33;
-    border-color:#3b82f6;
-    color:#e5e7eb;
-  }
+  #copyBtn.copied{background:#0f1a33;border-color:#3b82f6;color:#e5e7eb}
 
-  /* 解析失败提示（只在失败时出现） */
+  /* 解析提示 */
   #hint{
     position:absolute;
     left:24px;
@@ -87,7 +83,7 @@
     color:var(--muted);
     font-size:12px;
     display:none;
-    max-width:min(820px, 90vw);
+    max-width:min(900px, 92vw);
   }
 
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
@@ -109,7 +105,6 @@
       <div id="statusText"></div>
       <button id="copyBtn" type="button" title="复制">
         <span class="ico" id="copyIco">
-          <!-- copy icon -->
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <rect x="9" y="9" width="13" height="13" rx="2"></rect>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -155,19 +150,12 @@
 
   // { 派送方 -> Map(状态 -> 数量) }
   let GROUP = new Map();
-  // 当前右上角展示的纯文本（用于 copy）
   let statusCopyLine = '';
 
-  // 下拉切换（必须保留）
   selector.onchange = () => renderByGroup(selector.value);
 
-  // START 点击触发上传
   const openPicker = () => { fileEl.value=''; fileEl.click(); };
   startBtn.onclick = openPicker;
-
-  // 关键：某些浏览器/环境下 file input 的 click 可能被 overlay 影响
-  // 确保 start 覆盖层可点、且不会被其他元素挡住
-  start.style.pointerEvents = 'auto';
 
   fileEl.addEventListener('change', async (e)=>{
     const f = e.target.files?.[0];
@@ -186,7 +174,7 @@
     }catch(err){
       console.error(err);
       hint.style.display = 'block';
-      hint.textContent = '未能解析该 .xlsx（常见原因：文件为系统导出但未规范保存）。可尝试：用 Excel 打开后 Ctrl+S 再导入，或重新导出。';
+      hint.textContent = '未能解析该 .xlsx。若这是系统刚下载的文件且导入为空，通常是导出结构不规范或公式未落值。建议：用 Excel 打开后 Ctrl+S 再导入，或改用“导出为值”的方式。';
     }
   });
 
@@ -194,45 +182,68 @@
   const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
   const fmt  = n => Number(n||0).toLocaleString('en-US');
 
-  function cellText(cell){
-    if(!cell) return '';
-    if(cell.w !== undefined) return String(cell.w);
-    if(cell.v !== undefined) return String(cell.v);
-    return '';
-  }
+  // ✅ 稳定核心：二维数组解析（避免 cell.w/cell.v 扫格不稳定）
+  function parseSheetToGroup(sheet){
+    // 生成二维数组：每行是数组
+    const rows = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: '',
+      blankrows: false
+    });
 
-  function findHeaderCandidates(sheet, range, headerText, scanRows=200){
-    const target = norm(headerText), heads=[], R=Math.min(range.e.r, range.s.r+scanRows);
-    for(let r=range.s.r;r<=R;r++){
-      for(let c=range.s.c;c<=range.e.c;c++){
-        const cell = sheet[XLSX.utils.encode_cell({r,c})];
-        if(cell && norm(cellText(cell)) === target) heads.push({r,c});
+    if(!rows || rows.length === 0) return null;
+
+    // 找表头行：前 200 行内同时包含 “派送方” 和 “运单状态”
+    const MAX_SCAN = Math.min(rows.length, 200);
+    let headerRow = -1, dispatchCol = -1, statusCol = -1;
+
+    for(let r=0; r<MAX_SCAN; r++){
+      const row = rows[r] || [];
+      // 建一个 norm -> colIndex 的映射（同一行可能重复，取首次）
+      const idxMap = new Map();
+      for(let c=0; c<row.length; c++){
+        const t = norm(row[c]);
+        if(t && !idxMap.has(t)) idxMap.set(t, c);
+      }
+      if(idxMap.has(norm('派送方')) && idxMap.has(norm('运单状态'))){
+        headerRow = r;
+        dispatchCol = idxMap.get(norm('派送方'));
+        statusCol = idxMap.get(norm('运单状态'));
+        break;
       }
     }
-    return heads;
-  }
 
-  function scorePair(sheet, range, headA, headB){
-    const startRow = Math.max(headA.r, headB.r) + 1;
+    if(headerRow < 0 || dispatchCol < 0 || statusCol < 0) return null;
+
     const freqByGroup = new Map();
-    let pairCount = 0, emptyStreak = 0, LIMIT = 50; // 更稳：允许更长的空白段
-    for(let r=startRow; r<=range.e.r; r++){
-      const ca = sheet[XLSX.utils.encode_cell({r, c: headA.c})];
-      const cb = sheet[XLSX.utils.encode_cell({r, c: headB.c})];
-      let ga = cellText(ca).trim();
-      let sb = cellText(cb).trim();
+    let dataCount = 0;
 
-      if(ga && sb){
-        pairCount++; emptyStreak = 0;
-        if(!freqByGroup.has(ga)) freqByGroup.set(ga, new Map());
-        const m = freqByGroup.get(ga);
-        m.set(sb, (m.get(sb)||0) + 1);
+    // 从表头下一行开始读取
+    let tailEmpty = 0;
+    const TAIL_LIMIT = 300; // 末尾空白连续这么多行就停止（防止超大空表）
+    for(let r=headerRow+1; r<rows.length; r++){
+      const row = rows[r] || [];
+      const dispatch = String(row[dispatchCol] ?? '').trim();
+      const status   = String(row[statusCol] ?? '').trim();
+
+      if(dispatch && status){
+        tailEmpty = 0;
+        dataCount++;
+        if(!freqByGroup.has(dispatch)) freqByGroup.set(dispatch, new Map());
+        const m = freqByGroup.get(dispatch);
+        m.set(status, (m.get(status)||0) + 1);
       }else{
-        emptyStreak++;
-        if(emptyStreak >= LIMIT && pairCount > 0) break;
+        // 如果整行几乎为空，记空尾
+        const any = row.some(v => String(v ?? '').trim() !== '');
+        if(!any) tailEmpty++;
+        else tailEmpty = 0;
+
+        if(tailEmpty >= TAIL_LIMIT && dataCount > 0) break;
       }
     }
-    return { pairCount, freqByGroup };
+
+    if(dataCount <= 0) return null;
+    return freqByGroup;
   }
 
   function mergeGroup(into, from){
@@ -245,7 +256,6 @@
     }
   }
 
-  // 稳定读取：优先严格模式读取（生成 cell.w），如果解析不到表头，再自动用更宽松策略重试一次
   async function loadWorkbookStable(file){
     save.disabled = true;
     GROUP = new Map();
@@ -255,79 +265,60 @@
 
     const buf = await file.arrayBuffer();
 
-    // 尝试 1：生成 cell.w（关键修复）
+    // 尝试 1：raw:false + cellText:true（尽量拿到可读文本）
     let wb = XLSX.read(buf, {
       type:'array',
+      raw:false,
       cellText:true,
       cellNF:false,
-      cellHTML:false,
-      raw:false
+      cellHTML:false
     });
 
-    let group1 = parseWorkbook(wb);
+    let out = new Map();
 
-    // 如果完全没读到派送方/状态，重试一次（更宽松）
-    if(group1.size === 0){
-      wb = XLSX.read(buf, {
-        type:'array',
-        cellText:true,
-        cellNF:true,
-        cellHTML:false,
-        raw:false,
-        WTF:false
-      });
-      group1 = parseWorkbook(wb);
+    for(const sheetName of wb.SheetNames){
+      const sheet = wb.Sheets[sheetName];
+      if(!sheet || !sheet['!ref']) continue;
+      const part = parseSheetToGroup(sheet);
+      if(part) mergeGroup(out, part);
     }
 
-    GROUP = group1;
+    // 如果依然读不到，尝试 2：更宽松（有些文件需要 cellNF）
+    if(out.size === 0){
+      wb = XLSX.read(buf, {
+        type:'array',
+        raw:false,
+        cellText:true,
+        cellNF:true,
+        cellHTML:false
+      });
+      for(const sheetName of wb.SheetNames){
+        const sheet = wb.Sheets[sheetName];
+        if(!sheet || !sheet['!ref']) continue;
+        const part = parseSheetToGroup(sheet);
+        if(part) mergeGroup(out, part);
+      }
+    }
+
+    GROUP = out;
 
     if(GROUP.size===0){
       if(chart) chart.clear();
       selector.innerHTML='';
       titlebar.textContent='';
       statusText.textContent='';
-      statusCard.style.display = 'none';
+      statusCard.style.display='none';
       save.disabled = true;
 
-      // 给一个失败提示（但不强迫）
       hint.style.display = 'block';
-      hint.textContent = '未从文件中找到「派送方」「运单状态」两列（可能表头不一致或文件未规范保存）。';
+      hint.textContent = '未从文件中找到「派送方」「运单状态」两列（可能表头不一致或文件结构异常）。';
       return;
     }
 
-    // 渲染下拉
     const options = Array.from(GROUP.keys()).sort((a,b)=>a.localeCompare(b,'zh'));
     selector.innerHTML = options.map(v=>`<option value="${encodeURIComponent(v)}">${v}</option>`).join('');
     renderByGroup(encodeURIComponent(options[0]));
     save.disabled = false;
-  }
-
-  function parseWorkbook(wb){
-    const out = new Map();
-
-    for(const sheetName of wb.SheetNames){
-      const sheet = wb.Sheets[sheetName];
-      if(!sheet || !sheet['!ref']) continue;
-
-      const range = XLSX.utils.decode_range(sheet['!ref']);
-
-      const hDispatch = findHeaderCandidates(sheet, range, '派送方', 200);
-      const hStatus   = findHeaderCandidates(sheet, range, '运单状态', 200);
-      if(hDispatch.length===0 || hStatus.length===0) continue;
-
-      let best = { pairCount: -1, freqByGroup: null };
-      for(const ha of hDispatch){
-        for(const hb of hStatus){
-          const res = scorePair(sheet, range, ha, hb);
-          if(res.pairCount > best.pairCount) best = res;
-        }
-      }
-      if(best.pairCount <= 0) continue;
-
-      mergeGroup(out, best.freqByGroup);
-    }
-
-    return out;
   }
 
   function updateTitleBar(groupName, map){
@@ -343,13 +334,6 @@
       `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
-  // 右上角状态卡：
-  // - 忽略：快递员收件/签收/派送异常（不参与）
-  // - DSP错分 = 退回站点 + 集包 + 退回转运中心
-  // - 外城错分 = 上架
-  // - 未收到 = 站点签入
-  // - 其余状态：直接「状态名称+数量」
-  // - 没有的分类：不显示
   function updateStatusCard(map){
     const get = (name) => {
       const target = norm(name);
@@ -375,7 +359,6 @@
     if(outMissort > 0) lines.push(`外城错分${fmt(outMissort)}`);
     if(notReceived > 0) lines.push(`未收到${fmt(notReceived)}`);
 
-    // 多余状态：不在忽略项、也不在已归类项
     for(const [name, val] of map.entries()){
       const n = norm(name);
       const v = val || 0;
@@ -393,10 +376,7 @@
     }
 
     statusText.textContent = lines.join('\n');
-
-    // Copy 需要：同一行、逗号隔开
     statusCopyLine = lines.join(', ');
-
     statusCard.style.display = 'block';
   }
 
@@ -440,7 +420,7 @@
     a.click();
   };
 
-  // Copy 逻辑：更干净、3 秒后自动恢复
+  // Copy：3 秒后恢复 Copy；复制内容为同一行逗号分隔
   let copyTimer = null;
   function setCopyUI(copied){
     if(copied){
@@ -464,12 +444,10 @@
   }
 
   async function copyToClipboard(text){
-    // 现代剪贴板 API
     if(navigator.clipboard && window.isSecureContext){
       await navigator.clipboard.writeText(text);
       return;
     }
-    // 兼容 fallback
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.style.position = 'fixed';
@@ -494,7 +472,6 @@
     }
   };
 
-  // 首次默认 Copy UI
   setCopyUI(false);
 </script>
 </body>
