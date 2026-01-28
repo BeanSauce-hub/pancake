@@ -35,36 +35,76 @@
     box-shadow:0 0 0 2px rgba(255,255,255,0.06) inset;
   }
 
-  /* ✅ 极简紧凑版状态文本框（贴内容） */
+  /* ✅ 极简紧凑版状态文本框（右上角，贴内容） */
   #statusBox{
     position:absolute;
     top:16px;
     right:16px;
-    z-index:2;
-  
-    width:fit-content;     /* 完全贴合文本 */
-    max-width:260px;       /* 防止一行过长 */
+    z-index:3;
+
+    width:fit-content;
+    max-width:260px;
     height:auto;
-  
+
     padding:10px 12px;
     background:#0b1222;
     border:1px solid #334155;
     border-radius:12px;
-  
+
     color:#e5e7eb;
     font-size:15px;
     line-height:1.6;
     letter-spacing:.2px;
-  
+
     box-shadow:0 0 0 1px rgba(255,255,255,0.03) inset;
     white-space:pre-line;
-  
+
     max-height:200px;
     overflow:auto;
-  
+
     display:none;
   }
 
+  /* statusBox 内部结构 */
+  #statusHeader{
+    display:flex;
+    justify-content:flex-end;
+    align-items:center;
+    gap:8px;
+    margin-bottom:6px;
+  }
+  #statusText{
+    margin:0;
+    white-space:pre-line;
+  }
+
+  /* Copy 按键（像你图里的 Copy / Copied） */
+  #copyBtn{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+
+    border:0;
+    background:transparent;
+    color:#cbd5e1;
+    font-size:13px;
+    cursor:pointer;
+
+    padding:4px 6px;
+    border-radius:8px;
+  }
+  #copyBtn:hover{
+    background:rgba(148,163,184,0.10);
+    color:#e5e7eb;
+  }
+  #copyBtn:active{
+    transform:translateY(1px);
+  }
+
+  .copyIcon{
+    width:16px;height:16px;display:inline-block;
+  }
+  .copyIcon svg{width:16px;height:16px;display:block;fill:currentColor}
 
   #statusBox::-webkit-scrollbar{width:10px}
   #statusBox::-webkit-scrollbar-thumb{background:#24324a;border-radius:10px;border:2px solid #0b1222}
@@ -84,7 +124,18 @@
 
   <div id="stage">
     <select id="selector" title="派送方"></select>
-    <div id="statusBox"></div>
+
+    <!-- ✅ 右上角紧凑文本框 + Copy -->
+    <div id="statusBox">
+      <div id="statusHeader">
+        <button id="copyBtn" type="button" aria-label="Copy">
+          <span class="copyIcon" id="copyIcon"></span>
+          <span id="copyLabel">Copy</span>
+        </button>
+      </div>
+      <pre id="statusText"></pre>
+    </div>
+
     <div id="chart" role="img" aria-label="运单状态占比图"></div>
   </div>
 </main>
@@ -99,7 +150,12 @@
   const save = document.getElementById('save');
   const selector = document.getElementById('selector');
   const titlebar = document.getElementById('titlebar');
+
   const statusBox = document.getElementById('statusBox');
+  const statusTextEl = document.getElementById('statusText');
+  const copyBtn = document.getElementById('copyBtn');
+  const copyLabel = document.getElementById('copyLabel');
+  const copyIcon = document.getElementById('copyIcon');
 
   let chart = null, resizeObs = null;
 
@@ -134,11 +190,9 @@
     }
 
     try{
-      // ✅ 关键修复：先 init 图表，再读数据，再渲染
       ensureChart();
       await loadWorkbook(f);
 
-      // 只有成功拿到数据才切换界面
       if(GROUP.size > 0){
         start.style.display='none';
         main.style.display='grid';
@@ -154,7 +208,7 @@
   const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
   const fmt  = n => n.toLocaleString('en-US');
 
-  // ✅ 只在同一行定位表头（派送方 + 运单状态）
+  // ✅ 同一行定位表头（派送方 + 运单状态）
   function findHeaderOnSameRow(sheet, range, scanRows=140){
     const targetDispatch = norm('派送方');
     const targetStatus   = norm('运单状态');
@@ -186,9 +240,8 @@
   async function loadWorkbook(file){
     save.disabled = true;
     GROUP = new Map();
-    statusBox.textContent = '';
-    statusBox.style.display = 'none';
 
+    setStatusBoxText(''); // 清空并隐藏
     const buf = await file.arrayBuffer();
     const wb  = XLSX.read(buf,{type:'array'});
 
@@ -232,8 +285,6 @@
 
     const options = Array.from(GROUP.keys()).sort((a,b)=>a.localeCompare(b,'zh'));
     selector.innerHTML = options.map(v=>`<option value="${encodeURIComponent(v)}">${v}</option>`).join('');
-
-    // ✅ 这里开始渲染（chart 已确保初始化）
     renderByGroup(encodeURIComponent(options[0]));
     save.disabled = false;
   }
@@ -251,6 +302,77 @@
       `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
+  // ===== Copy UI =====
+  const ICON_COPY = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm2 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h8v14z"/>
+    </svg>`;
+  const ICON_CHECK = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 16.2 4.8 12 3.4 13.4 9 19l12-12-1.4-1.4z"/>
+    </svg>`;
+
+  function setCopyState(copied){
+    if(copied){
+      copyIcon.innerHTML = ICON_CHECK;
+      copyLabel.textContent = 'Copied';
+    }else{
+      copyIcon.innerHTML = ICON_COPY;
+      copyLabel.textContent = 'Copy';
+    }
+  }
+  setCopyState(false);
+
+  async function copyToClipboard(text){
+    // 优先现代 API
+    if(navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    // fallback（部分 github pages/旧浏览器）
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+
+  let copiedTimer = null;
+  copyBtn.addEventListener('click', async (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    const text = (statusTextEl.textContent || '').trim();
+    if(!text) return;
+
+    try{
+      await copyToClipboard(text);
+      setCopyState(true);
+      clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(()=> setCopyState(false), 1200);
+    }catch(err){
+      console.error(err);
+      alert('复制失败：请检查浏览器权限/页面是否为 https。');
+    }
+  });
+
+  // ✅ 设置文本框内容 + 自动显隐
+  function setStatusBoxText(text){
+    statusTextEl.textContent = text || '';
+    if(text && text.trim()){
+      statusBox.style.display = 'block';
+      // 每次刷新内容都回到 Copy 状态（不残留 Copied）
+      setCopyState(false);
+    }else{
+      statusBox.style.display = 'none';
+      setCopyState(false);
+    }
+  }
+
   // 文本框逻辑（保持你确认过的规则）
   function updateStatusBox(map){
     const get = (name) => {
@@ -263,9 +385,9 @@
 
     const IGNORE = new Set(['快递员收件','签收','派送异常'].map(norm));
     const CLASSIFIED = new Set([
-      '退回站点','集包','退回转运中心',
-      '上架',
-      '站点签入'
+      '退回站点','集包','退回转运中心', // DSP错分
+      '上架',                       // 外城错分
+      '站点签入'                    // 未收到
     ].map(norm));
 
     const dspMissort = get('退回站点') + get('集包') + get('退回转运中心');
@@ -286,9 +408,7 @@
       lines.push(`${name}${fmt(v)}`);
     }
 
-    const text = lines.join('\n');
-    statusBox.textContent = text;
-    statusBox.style.display = text ? 'block' : 'none';
+    setStatusBoxText(lines.join('\n'));
   }
 
   function renderByGroup(encodedKey){
