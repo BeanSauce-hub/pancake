@@ -4,10 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>谁动了我的煎饼？</title>
-
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-
 <style>
   :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#94a3b8;--accent:#ef4444}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"PingFang SC",Segoe UI,Roboto}
@@ -22,7 +20,12 @@
   .btn:disabled{opacity:.5;cursor:not-allowed}
   #save{position:absolute;top:16px;right:24px}
 
-  #stage{position:relative;width:min(1400px,94vw);height:calc(88vh - 120px);display:flex;align-items:center;justify-content:center}
+  #stage{
+    position:relative;
+    width:min(1400px,94vw);
+    height:calc(88vh - 120px);
+    display:flex;align-items:center;justify-content:center;
+  }
   #chart{width:100%;height:100%;background:var(--card);border:1px solid #334155;border-radius:16px}
 
   /* 下拉在卡片内左上角 */
@@ -35,119 +38,82 @@
     box-shadow:0 0 0 2px rgba(255,255,255,0.06) inset;
   }
 
-  /* ✅ 右上角紧凑文本框（贴内容） */
+  /* 右上角：紧凑统计框（自适应内容） */
   #statusBox{
     position:absolute;
-    top:16px;
-    right:16px;
+    top:22px;
+    right:22px;
     z-index:3;
-
-    width:fit-content;
-    max-width:260px;
-    height:auto;
-
-    padding:10px 12px;
+    display:none;                 /* 没内容就隐藏 */
+    width:max-content;            /* 贴合文本 */
+    max-width:260px;              /* 防止极端情况太宽 */
     background:#0b1222;
     border:1px solid #334155;
-    border-radius:12px;
-
+    border-radius:14px;
+    padding:12px 12px 10px;       /* 底部留给按钮 */
     color:#e5e7eb;
-    font-size:15px;
+    box-shadow:0 0 0 2px rgba(255,255,255,0.03) inset;
+  }
+
+  #statusText{
+    white-space:pre-line;
+    font-size:16px;
     line-height:1.6;
     letter-spacing:.2px;
-
-    box-shadow:0 0 0 1px rgba(255,255,255,0.03) inset;
-    white-space:pre-line;
-
-    max-height:200px;
-    overflow:auto;
-
-    display:none;
-  }
-
-  /* header 放在右上角，按钮紧凑 */
-  #statusHeader{
-    display:flex;
-    justify-content:flex-end;
-    align-items:center;
-    margin-bottom:8px;
-  }
-  #statusText{
     margin:0;
-    white-space:pre-line;
   }
 
-  /* ✅ Copy 按钮：横向一行 + 更专业 */
+  /* Copy 按键：放在文本下方 */
   #copyBtn{
-    display:inline-flex;
-    flex-direction:row;
+    margin-top:10px;
+    width:100%;
+    display:flex;
     align-items:center;
     justify-content:center;
-    gap:8px;
-
-    border:1px solid rgba(148,163,184,0.25);
-    background:rgba(31,41,55,0.55);
-    color:#cbd5e1;
-
-    font-size:13px;
-    font-weight:600;
-    letter-spacing:.2px;
-
-    padding:6px 10px;
-    border-radius:10px;
-    cursor:pointer;
-
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-  }
-  #copyBtn:hover{
-    background:rgba(31,41,55,0.75);
-    border-color:rgba(203,213,225,0.35);
+    gap:10px;
+    border:1px solid #334155;
+    background:#111c33;
     color:#e5e7eb;
+    border-radius:12px;
+    padding:8px 10px;
+    cursor:pointer;
+    font-weight:700;
   }
-  #copyBtn:active{
-    transform:translateY(1px);
-  }
-
-  .copyIcon{
-    width:16px;height:16px;display:inline-flex;
-  }
-  .copyIcon svg{
-    width:16px;height:16px;display:block;
-    stroke:currentColor;
-    fill:none;
-    stroke-width:2;
-    stroke-linecap:round;
-    stroke-linejoin:round;
-  }
-
-  #statusBox::-webkit-scrollbar{width:10px}
-  #statusBox::-webkit-scrollbar-thumb{background:#24324a;border-radius:10px;border:2px solid #0b1222}
-  #statusBox::-webkit-scrollbar-track{background:transparent}
+  #copyBtn:hover{background:#0f1a30}
+  #copyBtn:active{transform:translateY(1px)}
+  #copyBtn svg{width:18px;height:18px;opacity:.95}
+  #copyBtn .label{font-size:14px}
 
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style>
 </head>
-
 <body>
 
 <section id="start"><button id="startBtn">START</button></section>
 
 <main class="wrap" id="main" style="display:none">
   <div id="titlebar"></div>
+
   <button id="save" class="btn" disabled>下载 PNG</button>
 
   <div id="stage">
     <select id="selector" title="派送方"></select>
 
-    <div id="statusBox">
-      <div id="statusHeader">
-        <button id="copyBtn" type="button" aria-label="Copy">
-          <span class="copyIcon" id="copyIcon"></span>
-          <span id="copyLabel">Copy</span>
-        </button>
-      </div>
-      <pre id="statusText"></pre>
+    <!-- 右上角统计框：文本 + Copy（在下方） -->
+    <div id="statusBox" aria-label="派送异常统计">
+      <div id="statusText"></div>
+      <button id="copyBtn" type="button" title="复制">
+        <span id="copyIcon">
+          <!-- copy icon -->
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M8 8V6.8C8 5.11984 8 4.27976 8.32698 3.63803C8.6146 3.07354 9.07354 2.6146 9.63803 2.32698C10.2798 2 11.1198 2 12.8 2H16.2C17.8802 2 18.7202 2 19.362 2.32698C19.9265 2.6146 20.3854 3.07354 20.673 3.63803C21 4.27976 21 5.11984 21 6.8V10.2C21 11.8802 21 12.7202 20.673 13.362C20.3854 13.9265 19.9265 14.3854 19.362 14.673C18.7202 15 17.8802 15 16.2 15H15"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M3 11.8C3 10.1198 3 9.27976 3.32698 8.63803C3.6146 8.07354 4.07354 7.6146 4.63803 7.32698C5.27976 7 6.11984 7 7.8 7H11.2C12.8802 7 13.7202 7 14.362 7.32698C14.9265 7.6146 15.3854 8.07354 15.673 8.63803C16 9.27976 16 10.1198 16 11.8V17.2C16 18.8802 16 19.7202 15.673 20.362C15.3854 20.9265 14.9265 21.3854 14.362 21.673C13.7202 22 12.8802 22 11.2 22H7.8C6.11984 22 5.27976 22 4.63803 21.673C4.07354 21.3854 3.6146 20.9265 3.32698 20.362C3 19.7202 3 18.8802 3 17.2V11.8Z"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="label" id="copyLabel">Copy</span>
+      </button>
     </div>
 
     <div id="chart" role="img" aria-label="运单状态占比图"></div>
@@ -172,7 +138,6 @@
   const copyIcon = document.getElementById('copyIcon');
 
   let chart = null, resizeObs = null;
-
   function ensureChart(){
     if(!chart){
       const el = document.getElementById('chart');
@@ -186,70 +151,66 @@
   // { 派送方 -> Map(状态 -> 数量) }
   let GROUP = new Map();
 
+  // 下拉切换
   selector.onchange = () => renderByGroup(selector.value);
 
+  // 首次上传
   const openPicker = ()=>{ fileEl.value=''; fileEl.click(); };
   startBtn.onclick = openPicker;
 
   fileEl.addEventListener('change', async (e)=>{
     const f = e.target.files?.[0];
     if(!f) return;
-
-    if(!f.name.toLowerCase().endsWith('.xlsx')){
-      alert('只支持 .xlsx 文件');
-      return;
-    }
-
-    try{
-      ensureChart();
-      await loadWorkbook(f);
-
-      if(GROUP.size > 0){
-        start.style.display='none';
-        main.style.display='grid';
-        requestAnimationFrame(()=> chart && chart.resize());
-      }
-    }catch(err){
-      console.error(err);
-      alert('读取失败：请检查文件格式/表头是否包含“派送方”和“运单状态”。');
-    }
+    if(!f.name.toLowerCase().endsWith('.xlsx')){ alert('只支持 .xlsx 文件'); return; }
+    await loadWorkbook(f);
+    start.style.display='none';
+    main.style.display='grid';
+    ensureChart();
+    requestAnimationFrame(()=> chart && chart.resize());
   });
 
   const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
-  const fmt  = n => n.toLocaleString('en-US');
+  const fmt  = n => Number(n||0).toLocaleString('en-US');
 
-  function findHeaderOnSameRow(sheet, range, scanRows=140){
-    const targetDispatch = norm('派送方');
-    const targetStatus   = norm('运单状态');
-    const R = Math.min(range.e.r, range.s.r + scanRows);
-
-    for(let r=range.s.r; r<=R; r++){
-      let dispatchCol = null, statusCol = null;
-
-      for(let c=range.s.c; c<=range.e.c; c++){
+  function findHeaderCandidates(sheet, range, headerText, scanRows=80){
+    const target = norm(headerText), heads=[], R=Math.min(range.e.r, range.s.r+scanRows);
+    for(let r=range.s.r;r<=R;r++){
+      for(let c=range.s.c;c<=range.e.c;c++){
         const cell = sheet[XLSX.utils.encode_cell({r,c})];
-        const v = cell ? (cell.w ?? cell.v) : '';
-        const t = norm(v);
-        if(t === targetDispatch) dispatchCol = c;
-        if(t === targetStatus)   statusCol   = c;
-      }
-      if(dispatchCol !== null && statusCol !== null){
-        return { headerRow: r, dispatchCol, statusCol };
+        if(cell && norm(cell.w ?? cell.v) === target) heads.push({r,c});
       }
     }
-    return null;
+    return heads;
   }
 
-  function readCell(sheet, r, c){
-    const cell = sheet[XLSX.utils.encode_cell({r,c})];
-    const v = cell ? (cell.w ?? cell.v) : '';
-    return String(v ?? '').trim();
+  function scorePair(sheet, range, headA, headB){
+    const startRow = Math.max(headA.r, headB.r) + 1;
+    const freqByGroup = new Map();
+    let pairCount = 0, emptyStreak = 0, LIMIT = 25;
+
+    for(let r=startRow; r<=range.e.r; r++){
+      const ca = sheet[XLSX.utils.encode_cell({r, c: headA.c})];
+      const cb = sheet[XLSX.utils.encode_cell({r, c: headB.c})];
+      let ga = ca ? (ca.w ?? ca.v) : '';
+      let sb = cb ? (cb.w ?? cb.v) : '';
+      ga = String(ga ?? '').trim(); sb = String(sb ?? '').trim();
+
+      if(ga && sb){
+        pairCount++; emptyStreak = 0;
+        if(!freqByGroup.has(ga)) freqByGroup.set(ga, new Map());
+        const m = freqByGroup.get(ga);
+        m.set(sb, (m.get(sb)||0) + 1);
+      }else{
+        emptyStreak++;
+        if(emptyStreak >= LIMIT && pairCount > 0) break;
+      }
+    }
+    return { pairCount, freqByGroup };
   }
 
   async function loadWorkbook(file){
     save.disabled = true;
     GROUP = new Map();
-    setStatusBoxText('');
 
     const buf = await file.arrayBuffer();
     const wb  = XLSX.read(buf,{type:'array'});
@@ -259,36 +220,33 @@
       if(!sheet || !sheet['!ref']) continue;
 
       const range = XLSX.utils.decode_range(sheet['!ref']);
-      const header = findHeaderOnSameRow(sheet, range);
-      if(!header) continue;
+      const hDispatch = findHeaderCandidates(sheet, range, '派送方');
+      const hStatus   = findHeaderCandidates(sheet, range, '运单状态');
+      if(hDispatch.length===0 || hStatus.length===0) continue;
 
-      const { headerRow, dispatchCol, statusCol } = header;
-      const startRow = headerRow + 1;
+      let best = { pairCount: -1, freqByGroup: null };
+      for(const ha of hDispatch){
+        for(const hb of hStatus){
+          const res = scorePair(sheet, range, ha, hb);
+          if(res.pairCount > best.pairCount) best = res;
+        }
+      }
+      if(best.pairCount <= 0) continue;
 
-      let emptyStreak = 0, LIMIT = 30;
-
-      for(let r=startRow; r<=range.e.r; r++){
-        const dispatch = readCell(sheet, r, dispatchCol);
-        const status   = readCell(sheet, r, statusCol);
-
-        if(dispatch && status){
-          emptyStreak = 0;
-          if(!GROUP.has(dispatch)) GROUP.set(dispatch, new Map());
-          const g = GROUP.get(dispatch);
-          g.set(status, (g.get(status)||0) + 1);
-        }else{
-          emptyStreak++;
-          if(emptyStreak >= LIMIT) break;
+      for(const [dispatch, inner] of best.freqByGroup.entries()){
+        if(!GROUP.has(dispatch)) GROUP.set(dispatch, new Map());
+        const g = GROUP.get(dispatch);
+        for(const [status, n] of inner.entries()){
+          g.set(status, (g.get(status)||0) + n);
         }
       }
     }
 
-    if(GROUP.size === 0){
-      if(chart) chart.clear();
-      selector.innerHTML = '';
-      titlebar.textContent = '';
-      save.disabled = true;
-      alert('未找到可用数据：请确认表头同一行包含“派送方”和“运单状态”。');
+    if(GROUP.size===0){
+      if(chart){ chart.clear(); }
+      selector.innerHTML='';
+      titlebar.textContent='';
+      setStatusBoxText('', '');
       return;
     }
 
@@ -306,72 +264,39 @@
 
     const rate = total ? (pick / total) : 0;
     const suffix = groupName.split('-').pop() || groupName;
-
     titlebar.textContent =
       `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
-  // ✅ 线性图标（更专业）
-  const ICON_COPY = `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="9" y="9" width="10" height="12" rx="2"></rect>
-      <path d="M7 15H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path>
-    </svg>`;
-  const ICON_CHECK = `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M20 6 9 17l-5-5"></path>
-    </svg>`;
-
+  // Copy 状态（3秒自动回到 Copy）
+  let copyTimer = null;
   function setCopyState(copied){
     if(copied){
-      copyIcon.innerHTML = ICON_CHECK;
       copyLabel.textContent = 'Copied';
+      copyIcon.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
+      if(copyTimer) clearTimeout(copyTimer);
+      copyTimer = setTimeout(()=> setCopyState(false), 3000);
     }else{
-      copyIcon.innerHTML = ICON_COPY;
       copyLabel.textContent = 'Copy';
+      copyIcon.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M8 8V6.8C8 5.11984 8 4.27976 8.32698 3.63803C8.6146 3.07354 9.07354 2.6146 9.63803 2.32698C10.2798 2 11.1198 2 12.8 2H16.2C17.8802 2 18.7202 2 19.362 2.32698C19.9265 2.6146 20.3854 3.07354 20.673 3.63803C21 4.27976 21 5.11984 21 6.8V10.2C21 11.8802 21 12.7202 20.673 13.362C20.3854 13.9265 19.9265 14.3854 19.362 14.673C18.7202 15 17.8802 15 16.2 15H15"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M3 11.8C3 10.1198 3 9.27976 3.32698 8.63803C3.6146 8.07354 4.07354 7.6146 4.63803 7.32698C5.27976 7 6.11984 7 7.8 7H11.2C12.8802 7 13.7202 7 14.362 7.32698C14.9265 7.6146 15.3854 8.07354 15.673 8.63803C16 9.27976 16 10.1198 16 11.8V17.2C16 18.8802 16 19.7202 15.673 20.362C15.3854 20.9265 14.9265 21.3854 14.362 21.673C13.7202 22 12.8802 22 11.2 22H7.8C6.11984 22 5.27976 22 4.63803 21.673C4.07354 21.3854 3.6146 20.9265 3.32698 20.362C3 19.7202 3 18.8802 3 17.2V11.8Z"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>`;
+      if(copyTimer){ clearTimeout(copyTimer); copyTimer=null; }
     }
   }
-  setCopyState(false);
 
-  async function copyToClipboard(text){
-    if(navigator.clipboard && window.isSecureContext){
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    ta.style.top = '-9999px';
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-  }
+  function setStatusBoxText(displayText, copyText){
+    statusTextEl.textContent = displayText || '';
+    statusBox.dataset.copyText = copyText || '';
 
-  let copiedTimer = null;
-  copyBtn.addEventListener('click', async (e)=>{
-    e.preventDefault();
-    e.stopPropagation();
-    const text = (statusTextEl.textContent || '').trim();
-    if(!text) return;
-
-    try{
-      await copyToClipboard(text);
-      setCopyState(true);
-      clearTimeout(copiedTimer);
-      // ✅ 3 秒后回到 Copy
-      copiedTimer = setTimeout(()=> setCopyState(false), 3000);
-    }catch(err){
-      console.error(err);
-      alert('复制失败：请检查浏览器权限/页面是否为 https。');
-    }
-  });
-
-  function setStatusBoxText(text){
-    statusTextEl.textContent = text || '';
-    if(text && text.trim()){
+    if(displayText && displayText.trim()){
       statusBox.style.display = 'block';
       setCopyState(false);
     }else{
@@ -380,6 +305,10 @@
     }
   }
 
+  // 右上角文本框逻辑（忽略：快递员收件/签收/派送异常）
+  // - 没有的分类：不显示
+  // - 其它多余状态：显示“状态名称+数量”
+  // - 复制内容：同一行，用逗号隔开
   function updateStatusBox(map){
     const get = (name) => {
       const target = norm(name);
@@ -391,9 +320,9 @@
 
     const IGNORE = new Set(['快递员收件','签收','派送异常'].map(norm));
     const CLASSIFIED = new Set([
-      '退回站点','集包','退回转运中心',
-      '上架',
-      '站点签入'
+      '退回站点','集包','退回转运中心',  // DSP错分
+      '上架',                          // 外城错分
+      '站点签入'                       // 未收到
     ].map(norm));
 
     const dspMissort = get('退回站点') + get('集包') + get('退回转运中心');
@@ -414,7 +343,9 @@
       lines.push(`${name}${fmt(v)}`);
     }
 
-    setStatusBoxText(lines.join('\n'));
+    const displayText = lines.join('\n');
+    const copyText = lines.join(', ');
+    setStatusBoxText(displayText, copyText);
   }
 
   function renderByGroup(encodedKey){
@@ -445,12 +376,30 @@
   }
 
   save.onclick = ()=>{
+    if(!chart) return;
     const current = selector.options[selector.selectedIndex]?.text || 'chart';
     const url = chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${current}-pie.png`;
-    a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `${current}-pie.png`; a.click();
+  };
+
+  copyBtn.onclick = async ()=>{
+    const text = (statusBox.dataset.copyText || '').trim();
+    if(!text) return;
+
+    try{
+      await navigator.clipboard.writeText(text);
+      setCopyState(true);
+    }catch(e){
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      try{ document.execCommand('copy'); setCopyState(true); }catch(_){}
+      document.body.removeChild(ta);
+    }
   };
 </script>
 </body>
