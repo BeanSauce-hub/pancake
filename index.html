@@ -204,7 +204,10 @@
       `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
-  // 左下角文本框：忽略“快递员收件/签收/派送异常”，只统计错分类与未收到
+  // ✅ 左下角文本框：
+  // - 没有的分类：不显示（不再显示“未分类”）
+  // - 忽略：快递员收件/签收/派送异常（完全不参与）
+  // - 其它多余状态：直接显示“状态名称+数量”
   function updateStatusBox(map){
     const get = (name) => {
       const target = norm(name);
@@ -214,20 +217,42 @@
       return 0;
     };
 
+    // 忽略项
+    const IGNORE = new Set(['快递员收件','签收','派送异常'].map(norm));
+
+    // 已归类项（这些不作为“多余状态”再显示）
+    const CLASSIFIED = new Set([
+      '退回站点','集包','退回转运中心',  // DSP错分
+      '上架',                        // 外城错分
+      '站点签入'                     // 未收到
+    ].map(norm));
+
     const dspMissort =
         get('退回站点')
       + get('集包')
       + get('退回转运中心');
 
     const outMissort = get('上架');
-
     const notReceived = get('站点签入');
 
-    const dspText = dspMissort > 0 ? `DSP错分${fmt(dspMissort)}` : `DSP错分未分类`;
-    const outText = outMissort > 0 ? `外城错分${fmt(outMissort)}` : `外城错分未分类`;
-    const nrText  = notReceived > 0 ? `未收到${fmt(notReceived)}` : `未收到未分类`;
+    const lines = [];
 
-    statusBox.textContent = `${dspText}\n${outText}\n${nrText}`;
+    // 只有 >0 才显示
+    if(dspMissort > 0) lines.push(`DSP错分${fmt(dspMissort)}`);
+    if(outMissort > 0) lines.push(`外城错分${fmt(outMissort)}`);
+    if(notReceived > 0) lines.push(`未收到${fmt(notReceived)}`);
+
+    // 多余状态：不在忽略项、也不在已归类项
+    for(const [name, val] of map.entries()){
+      const n = norm(name);
+      const v = val || 0;
+      if(v <= 0) continue;
+      if(IGNORE.has(n)) continue;
+      if(CLASSIFIED.has(n)) continue;
+      lines.push(`${name}${fmt(v)}`);
+    }
+
+    statusBox.textContent = lines.join('\n');
   }
 
   function renderByGroup(encodedKey){
