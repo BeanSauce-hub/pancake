@@ -346,8 +346,8 @@
     const IGNORE = new Set(['快递员收件','签收','派送异常'].map(norm));
     const CLASSIFIED = new Set([
       '退回站点','集包','退回转运中心',  // DSP错分
-      '上架',                        // 外城错分
-      '站点签入'                     // 未收到
+      '上架',                          // 外城错分
+      '站点签入','转运中心签入'         // 未收到
     ].map(norm));
 
     const dspMissort = get('退回站点') + get('集包') + get('退回转运中心');
