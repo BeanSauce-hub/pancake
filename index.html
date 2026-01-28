@@ -9,295 +9,321 @@
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
 <style>
-:root{
-  --bg:#0f172a;
-  --card:#111827;
-  --text:#e5e7eb;
-  --muted:#94a3b8;
-  --accent:#ef4444
-}
+  :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#94a3b8;--accent:#ef4444}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"PingFang SC",Segoe UI,Roboto}
 
-html,body{
-  height:100%;
-  margin:0;
-  background:var(--bg);
-  color:var(--text);
-  font-family:system-ui,-apple-system,"PingFang SC",Segoe UI,Roboto
-}
+  #start{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10}
+  #startBtn{font-size:40px;font-weight:800;padding:18px 64px;border:0;border-radius:18px;background:var(--accent);color:#fff;cursor:pointer}
 
-#start{
-  position:fixed;
-  inset:0;
-  display:grid;
-  place-items:center;
-  background:var(--bg);
-  z-index:10
-}
+  .wrap{min-height:100vh;display:grid;grid-template-rows:auto 1fr;gap:14px;place-items:center;padding:20px;position:relative}
+  #titlebar{font-size:28px;font-weight:800;letter-spacing:.5px;text-align:center;margin-top:10px}
 
-#startBtn{
-  font-size:40px;
-  font-weight:800;
-  padding:18px 64px;
-  border:0;
-  border-radius:18px;
-  background:var(--accent);
-  color:#fff;
-  cursor:pointer
-}
+  .btn{border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:10px;padding:6px 12px;cursor:pointer}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  #save{position:absolute;top:16px;right:24px}
 
-.wrap{
-  min-height:100vh;
-  display:grid;
-  grid-template-rows:auto 1fr;
-  gap:14px;
-  place-items:center;
-  padding:20px;
-  position:relative
-}
+  #stage{position:relative;width:min(1400px,94vw);height:calc(88vh - 120px);display:flex;align-items:center;justify-content:center}
+  #chart{width:100%;height:100%;background:var(--card);border:1px solid #334155;border-radius:16px}
 
-#titlebar{
-  font-size:28px;
-  font-weight:800;
-  letter-spacing:.5px;
-  text-align:center;
-  margin-top:10px
-}
+  /* 下拉在卡片内左上角 */
+  #selector{
+    position:absolute;
+    top:26px;
+    left:34px;
+    z-index:2;
+    border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:12px;padding:8px 14px;
+    box-shadow:0 0 0 2px rgba(255,255,255,0.06) inset;
+  }
 
-.btn{
-  border:1px solid #334155;
-  background:#1f2937;
-  color:#e5e7eb;
-  border-radius:10px;
-  padding:6px 12px;
-  cursor:pointer
-}
+  /* ✅ 自适应状态文本框：右上角，内容少就很小；内容多就滚动 */
+  #statusBox{
+    position:absolute;
+    right:34px;
+    top:78px;
+    z-index:2;
 
-#save{
-  position:absolute;
-  top:16px;
-  right:24px
-}
+    width:320px;
+    height:auto;
+    min-height:0;
 
-#stage{
-  position:relative;
-  width:min(1400px,94vw);
-  height:calc(88vh - 120px);
-  display:flex;
-  align-items:center;
-  justify-content:center
-}
+    background:#0b1222;
+    border:1px solid #334155;
+    border-radius:14px;
+    padding:14px 16px;
 
-#chart{
-  width:100%;
-  height:100%;
-  background:var(--card);
-  border:1px solid #334155;
-  border-radius:16px
-}
+    color:#e5e7eb;
+    font-size:16px;
+    line-height:1.7;
+    letter-spacing:.2px;
+    box-shadow:0 0 0 2px rgba(255,255,255,0.03) inset;
+    white-space:pre-line;
 
-/* 派送方下拉 */
-#selector{
-  position:absolute;
-  top:26px;
-  left:34px;
-  z-index:2;
-  border:1px solid #334155;
-  background:#1f2937;
-  color:#e5e7eb;
-  border-radius:12px;
-  padding:8px 14px;
-}
+    max-height:260px;
+    overflow:auto;
 
-/* ✅ 自适应状态文本框（右上角） */
-#statusBox{
-  position:absolute;
-  right:34px;
-  top:78px;
-  z-index:2;
+    display:none;
+  }
 
-  width:320px;
-  height:auto;
-  padding:14px 16px;
+  #statusBox::-webkit-scrollbar{width:10px}
+  #statusBox::-webkit-scrollbar-thumb{background:#24324a;border-radius:10px;border:2px solid #0b1222}
+  #statusBox::-webkit-scrollbar-track{background:transparent}
 
-  background:#0b1222;
-  border:1px solid #334155;
-  border-radius:14px;
-
-  color:#e5e7eb;
-  font-size:16px;
-  line-height:1.7;
-
-  white-space:pre-line;
-  box-shadow:0 0 0 2px rgba(255,255,255,0.03) inset;
-
-  max-height:260px;
-  overflow:auto;
-  display:none;
-}
-
-#statusBox::-webkit-scrollbar{width:10px}
-#statusBox::-webkit-scrollbar-thumb{
-  background:#24324a;
-  border-radius:10px;
-  border:2px solid #0b1222
-}
-
-.sr-only{
-  position:absolute;
-  width:1px;
-  height:1px;
-  padding:0;
-  margin:-1px;
-  overflow:hidden;
-  clip:rect(0,0,0,0);
-  white-space:nowrap;
-  border:0
-}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style>
 </head>
 
 <body>
 
-<section id="start">
-  <button id="startBtn">START</button>
-</section>
+<section id="start"><button id="startBtn">START</button></section>
 
 <main class="wrap" id="main" style="display:none">
   <div id="titlebar"></div>
   <button id="save" class="btn" disabled>下载 PNG</button>
 
   <div id="stage">
-    <select id="selector"></select>
+    <select id="selector" title="派送方"></select>
     <div id="statusBox"></div>
-    <div id="chart"></div>
+    <div id="chart" role="img" aria-label="运单状态占比图"></div>
   </div>
 </main>
 
 <input type="file" id="file" accept=".xlsx" class="sr-only"/>
 
 <script>
-const start = document.getElementById('start');
-const startBtn = document.getElementById('startBtn');
-const main = document.getElementById('main');
-const fileEl = document.getElementById('file');
-const save = document.getElementById('save');
-const selector = document.getElementById('selector');
-const titlebar = document.getElementById('titlebar');
-const statusBox = document.getElementById('statusBox');
+  const start = document.getElementById('start');
+  const startBtn = document.getElementById('startBtn');
+  const main = document.getElementById('main');
+  const fileEl = document.getElementById('file');
+  const save = document.getElementById('save');
+  const selector = document.getElementById('selector');
+  const titlebar = document.getElementById('titlebar');
+  const statusBox = document.getElementById('statusBox');
 
-let chart;
+  let chart = null, resizeObs = null;
 
-const norm = s => String(s ?? '')
-  .replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'')
-  .toLowerCase();
-
-const fmt = n => n.toLocaleString('en-US');
-
-let GROUP = new Map();
-
-startBtn.onclick = ()=>{ fileEl.value=''; fileEl.click(); };
-selector.onchange = ()=> renderByGroup(selector.value);
-
-fileEl.addEventListener('change', async e=>{
-  const f = e.target.files?.[0];
-  if(!f) return;
-  await loadWorkbook(f);
-  start.style.display='none';
-  main.style.display='grid';
-  initChart();
-});
-
-function initChart(){
-  if(chart) return;
-  chart = echarts.init(document.getElementById('chart'));
-  window.addEventListener('resize',()=>chart.resize());
-}
-
-async function loadWorkbook(file){
-  GROUP.clear();
-  const wb = XLSX.read(await file.arrayBuffer(),{type:'array'});
-
-  for(const name of wb.SheetNames){
-    const s = wb.Sheets[name];
-    if(!s?.['!ref']) continue;
-    const rows = XLSX.utils.sheet_to_json(s,{defval:''});
-    for(const r of rows){
-      if(!r['派送方'] || !r['运单状态']) continue;
-      if(!GROUP.has(r['派送方'])) GROUP.set(r['派送方'],new Map());
-      const m = GROUP.get(r['派送方']);
-      m.set(r['运单状态'],(m.get(r['运单状态'])||0)+1);
+  function ensureChart(){
+    if(!chart){
+      const el = document.getElementById('chart');
+      chart = echarts.init(el);
+      resizeObs = new ResizeObserver(()=> chart && chart.resize());
+      resizeObs.observe(el);
+      window.addEventListener('resize', ()=> chart && chart.resize());
     }
   }
 
-  const keys = [...GROUP.keys()].sort();
-  selector.innerHTML = keys.map(k=>`<option value="${k}">${k}</option>`).join('');
-  renderByGroup(keys[0]);
-  save.disabled=false;
-}
+  // { 派送方 -> Map(状态 -> 数量) }
+  let GROUP = new Map();
 
-function updateTitle(group,map){
-  const total=[...map.values()].reduce((a,b)=>a+b,0);
-  const PICK=new Set(['快递员收件','签收','派送异常'].map(norm));
-  let pick=0;
-  for(const [k,v] of map) if(PICK.has(norm(k))) pick+=v;
-  const rate=total?pick/total:0;
-  const suf=group.split('-').pop();
-  titlebar.textContent =
-    `${group} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suf}取件率 ${(rate*100).toFixed(2)}%`;
-}
+  // 下拉切换
+  selector.onchange = () => renderByGroup(selector.value);
 
-function updateStatusBox(map){
-  const IGNORE=new Set(['快递员收件','签收','派送异常'].map(norm));
-  const CLASS=new Set(['退回站点','集包','退回转运中心','上架','站点签入'].map(norm));
+  // 点击 START -> 打开选择文件
+  const openPicker = ()=>{ fileEl.value=''; fileEl.click(); };
+  startBtn.onclick = openPicker;
 
-  const get=n=>[...map].find(([k])=>norm(k)===norm(n))?.[1]||0;
+  // 选文件后读取
+  fileEl.addEventListener('change', async (e)=>{
+    const f = e.target.files?.[0];
+    if(!f) return;
 
-  const lines=[];
-  const dsp=get('退回站点')+get('集包')+get('退回转运中心');
-  const out=get('上架');
-  const nr=get('站点签入');
+    if(!f.name.toLowerCase().endsWith('.xlsx')){
+      alert('只支持 .xlsx 文件');
+      return;
+    }
 
-  if(dsp>0) lines.push(`DSP错分${fmt(dsp)}`);
-  if(out>0) lines.push(`外城错分${fmt(out)}`);
-  if(nr>0)  lines.push(`未收到${fmt(nr)}`);
+    try{
+      // ✅ 关键修复：先 init 图表，再读数据，再渲染
+      ensureChart();
+      await loadWorkbook(f);
 
-  for(const [k,v] of map){
-    const n=norm(k);
-    if(v<=0||IGNORE.has(n)||CLASS.has(n)) continue;
-    lines.push(`${k}${fmt(v)}`);
+      // 只有成功拿到数据才切换界面
+      if(GROUP.size > 0){
+        start.style.display='none';
+        main.style.display='grid';
+        requestAnimationFrame(()=> chart && chart.resize());
+      }
+    }catch(err){
+      console.error(err);
+      alert('读取失败：请检查文件格式/表头是否包含“派送方”和“运单状态”。\n\n控制台也会输出错误细节。');
+    }
+  });
+
+  // utils
+  const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
+  const fmt  = n => n.toLocaleString('en-US');
+
+  // ✅ 只在同一行定位表头（派送方 + 运单状态）
+  function findHeaderOnSameRow(sheet, range, scanRows=140){
+    const targetDispatch = norm('派送方');
+    const targetStatus   = norm('运单状态');
+    const R = Math.min(range.e.r, range.s.r + scanRows);
+
+    for(let r=range.s.r; r<=R; r++){
+      let dispatchCol = null, statusCol = null;
+
+      for(let c=range.s.c; c<=range.e.c; c++){
+        const cell = sheet[XLSX.utils.encode_cell({r,c})];
+        const v = cell ? (cell.w ?? cell.v) : '';
+        const t = norm(v);
+        if(t === targetDispatch) dispatchCol = c;
+        if(t === targetStatus)   statusCol   = c;
+      }
+      if(dispatchCol !== null && statusCol !== null){
+        return { headerRow: r, dispatchCol, statusCol };
+      }
+    }
+    return null;
   }
 
-  statusBox.textContent = lines.join('\n');
-  statusBox.style.display = lines.length ? 'block' : 'none';
-}
+  function readCell(sheet, r, c){
+    const cell = sheet[XLSX.utils.encode_cell({r,c})];
+    const v = cell ? (cell.w ?? cell.v) : '';
+    return String(v ?? '').trim();
+  }
 
-function renderByGroup(key){
-  const map=GROUP.get(key);
-  updateTitle(key,map);
-  updateStatusBox(map);
+  async function loadWorkbook(file){
+    save.disabled = true;
+    GROUP = new Map();
+    statusBox.textContent = '';
+    statusBox.style.display = 'none';
 
-  chart.setOption({
-    tooltip:{trigger:'item',formatter:p=>`${p.name} ${fmt(p.value)}｜${p.percent}%`},
-    legend:{type:'scroll',orient:'vertical',left:'4%',top:'center'},
-    series:[{
-      type:'pie',
-      radius:['52%','86%'],
-      center:['60%','52%'],
-      itemStyle:{borderColor:'#0f172a',borderWidth:2},
-      label:{formatter:p=>`${p.name} ${p.percent}%`},
-      data:[...map].map(([n,v])=>({name:n,value:v}))
-    }]
-  },true);
-}
+    const buf = await file.arrayBuffer();
+    const wb  = XLSX.read(buf,{type:'array'});
 
-save.onclick=()=>{
-  const url=chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
-  const a=document.createElement('a');
-  a.href=url;
-  a.download=`${selector.value}.png`;
-  a.click();
-};
+    for(const sheetName of wb.SheetNames){
+      const sheet = wb.Sheets[sheetName];
+      if(!sheet || !sheet['!ref']) continue;
+
+      const range = XLSX.utils.decode_range(sheet['!ref']);
+      const header = findHeaderOnSameRow(sheet, range);
+      if(!header) continue;
+
+      const { headerRow, dispatchCol, statusCol } = header;
+      const startRow = headerRow + 1;
+
+      let emptyStreak = 0, LIMIT = 30;
+
+      for(let r=startRow; r<=range.e.r; r++){
+        const dispatch = readCell(sheet, r, dispatchCol);
+        const status   = readCell(sheet, r, statusCol);
+
+        if(dispatch && status){
+          emptyStreak = 0;
+          if(!GROUP.has(dispatch)) GROUP.set(dispatch, new Map());
+          const g = GROUP.get(dispatch);
+          g.set(status, (g.get(status)||0) + 1);
+        }else{
+          emptyStreak++;
+          if(emptyStreak >= LIMIT) break;
+        }
+      }
+    }
+
+    if(GROUP.size === 0){
+      if(chart) chart.clear();
+      selector.innerHTML = '';
+      titlebar.textContent = '';
+      save.disabled = true;
+      alert('未找到可用数据：请确认表头同一行包含“派送方”和“运单状态”。');
+      return;
+    }
+
+    const options = Array.from(GROUP.keys()).sort((a,b)=>a.localeCompare(b,'zh'));
+    selector.innerHTML = options.map(v=>`<option value="${encodeURIComponent(v)}">${v}</option>`).join('');
+
+    // ✅ 这里开始渲染（chart 已确保初始化）
+    renderByGroup(encodeURIComponent(options[0]));
+    save.disabled = false;
+  }
+
+  function updateTitleBar(groupName, map){
+    const total = Array.from(map.values()).reduce((a,b)=> a + b, 0);
+    const PICK_STATUS = new Set(['快递员收件','派送异常','签收'].map(s => norm(s)));
+    let pick = 0;
+    for (const [k, v] of map.entries()) if (PICK_STATUS.has(norm(k))) pick += v;
+
+    const rate = total ? (pick / total) : 0;
+    const suffix = groupName.split('-').pop() || groupName;
+
+    titlebar.textContent =
+      `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
+  }
+
+  // 文本框逻辑（保持你确认过的规则）
+  function updateStatusBox(map){
+    const get = (name) => {
+      const target = norm(name);
+      for (const [k, v] of map.entries()){
+        if (norm(k) === target) return v || 0;
+      }
+      return 0;
+    };
+
+    const IGNORE = new Set(['快递员收件','签收','派送异常'].map(norm));
+    const CLASSIFIED = new Set([
+      '退回站点','集包','退回转运中心',
+      '上架',
+      '站点签入'
+    ].map(norm));
+
+    const dspMissort = get('退回站点') + get('集包') + get('退回转运中心');
+    const outMissort = get('上架');
+    const notReceived = get('站点签入');
+
+    const lines = [];
+    if(dspMissort > 0) lines.push(`DSP错分${fmt(dspMissort)}`);
+    if(outMissort > 0) lines.push(`外城错分${fmt(outMissort)}`);
+    if(notReceived > 0) lines.push(`未收到${fmt(notReceived)}`);
+
+    for(const [name, val] of map.entries()){
+      const n = norm(name);
+      const v = val || 0;
+      if(v <= 0) continue;
+      if(IGNORE.has(n)) continue;
+      if(CLASSIFIED.has(n)) continue;
+      lines.push(`${name}${fmt(v)}`);
+    }
+
+    const text = lines.join('\n');
+    statusBox.textContent = text;
+    statusBox.style.display = text ? 'block' : 'none';
+  }
+
+  function renderByGroup(encodedKey){
+    ensureChart();
+    const key = decodeURIComponent(encodedKey);
+    const m = GROUP.get(key) || new Map();
+    const data = Array.from(m.entries()).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
+
+    updateTitleBar(key, m);
+    updateStatusBox(m);
+
+    chart.setOption({
+      backgroundColor:'transparent',
+      tooltip:{trigger:'item',formatter:p=>`${p.name}  ${fmt(p.value)}｜${p.percent}%`},
+      legend:{type:'scroll',orient:'vertical',left:'4%',top:'center',textStyle:{color:'#cbd5e1'}},
+      series:[{
+        name:key,
+        type:'pie',
+        radius: window.innerWidth<1200 ? ['46%','82%'] : ['52%','86%'],
+        center:['60%','52%'],
+        itemStyle:{borderColor:'#0f172a',borderWidth:2},
+        label:{color:'#e5e7eb',formatter:(p)=>`${p.name} ${p.percent}%`},
+        data
+      }]
+    }, true);
+
+    requestAnimationFrame(()=> chart && chart.resize());
+  }
+
+  save.onclick = ()=>{
+    const current = selector.options[selector.selectedIndex]?.text || 'chart';
+    const url = chart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#0f172a'});
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${current}-pie.png`;
+    a.click();
+  };
 </script>
-
 </body>
 </html>
