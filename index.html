@@ -35,7 +35,7 @@
     box-shadow:0 0 0 2px rgba(255,255,255,0.06) inset;
   }
 
-  /* ✅ 极简紧凑版状态文本框（右上角，贴内容） */
+  /* ✅ 右上角紧凑文本框（贴内容） */
   #statusBox{
     position:absolute;
     top:16px;
@@ -65,36 +65,44 @@
     display:none;
   }
 
-  /* statusBox 内部结构 */
+  /* header 放在右上角，按钮紧凑 */
   #statusHeader{
     display:flex;
     justify-content:flex-end;
     align-items:center;
-    gap:8px;
-    margin-bottom:6px;
+    margin-bottom:8px;
   }
   #statusText{
     margin:0;
     white-space:pre-line;
   }
 
-  /* Copy 按键（像你图里的 Copy / Copied） */
+  /* ✅ Copy 按钮：横向一行 + 更专业 */
   #copyBtn{
     display:inline-flex;
+    flex-direction:row;
     align-items:center;
+    justify-content:center;
     gap:8px;
 
-    border:0;
-    background:transparent;
+    border:1px solid rgba(148,163,184,0.25);
+    background:rgba(31,41,55,0.55);
     color:#cbd5e1;
+
     font-size:13px;
+    font-weight:600;
+    letter-spacing:.2px;
+
+    padding:6px 10px;
+    border-radius:10px;
     cursor:pointer;
 
-    padding:4px 6px;
-    border-radius:8px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
   #copyBtn:hover{
-    background:rgba(148,163,184,0.10);
+    background:rgba(31,41,55,0.75);
+    border-color:rgba(203,213,225,0.35);
     color:#e5e7eb;
   }
   #copyBtn:active{
@@ -102,9 +110,16 @@
   }
 
   .copyIcon{
-    width:16px;height:16px;display:inline-block;
+    width:16px;height:16px;display:inline-flex;
   }
-  .copyIcon svg{width:16px;height:16px;display:block;fill:currentColor}
+  .copyIcon svg{
+    width:16px;height:16px;display:block;
+    stroke:currentColor;
+    fill:none;
+    stroke-width:2;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+  }
 
   #statusBox::-webkit-scrollbar{width:10px}
   #statusBox::-webkit-scrollbar-thumb{background:#24324a;border-radius:10px;border:2px solid #0b1222}
@@ -125,7 +140,6 @@
   <div id="stage">
     <select id="selector" title="派送方"></select>
 
-    <!-- ✅ 右上角紧凑文本框 + Copy -->
     <div id="statusBox">
       <div id="statusHeader">
         <button id="copyBtn" type="button" aria-label="Copy">
@@ -172,14 +186,11 @@
   // { 派送方 -> Map(状态 -> 数量) }
   let GROUP = new Map();
 
-  // 下拉切换
   selector.onchange = () => renderByGroup(selector.value);
 
-  // 点击 START -> 打开选择文件
   const openPicker = ()=>{ fileEl.value=''; fileEl.click(); };
   startBtn.onclick = openPicker;
 
-  // 选文件后读取
   fileEl.addEventListener('change', async (e)=>{
     const f = e.target.files?.[0];
     if(!f) return;
@@ -200,15 +211,13 @@
       }
     }catch(err){
       console.error(err);
-      alert('读取失败：请检查文件格式/表头是否包含“派送方”和“运单状态”。\n\n控制台也会输出错误细节。');
+      alert('读取失败：请检查文件格式/表头是否包含“派送方”和“运单状态”。');
     }
   });
 
-  // utils
   const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
   const fmt  = n => n.toLocaleString('en-US');
 
-  // ✅ 同一行定位表头（派送方 + 运单状态）
   function findHeaderOnSameRow(sheet, range, scanRows=140){
     const targetDispatch = norm('派送方');
     const targetStatus   = norm('运单状态');
@@ -240,8 +249,8 @@
   async function loadWorkbook(file){
     save.disabled = true;
     GROUP = new Map();
+    setStatusBoxText('');
 
-    setStatusBoxText(''); // 清空并隐藏
     const buf = await file.arrayBuffer();
     const wb  = XLSX.read(buf,{type:'array'});
 
@@ -302,14 +311,15 @@
       `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
-  // ===== Copy UI =====
+  // ✅ 线性图标（更专业）
   const ICON_COPY = `
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm2 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h8v14z"/>
+      <rect x="9" y="9" width="10" height="12" rx="2"></rect>
+      <path d="M7 15H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path>
     </svg>`;
   const ICON_CHECK = `
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M9 16.2 4.8 12 3.4 13.4 9 19l12-12-1.4-1.4z"/>
+      <path d="M20 6 9 17l-5-5"></path>
     </svg>`;
 
   function setCopyState(copied){
@@ -324,12 +334,10 @@
   setCopyState(false);
 
   async function copyToClipboard(text){
-    // 优先现代 API
     if(navigator.clipboard && window.isSecureContext){
       await navigator.clipboard.writeText(text);
       return;
     }
-    // fallback（部分 github pages/旧浏览器）
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.style.position = 'fixed';
@@ -353,19 +361,18 @@
       await copyToClipboard(text);
       setCopyState(true);
       clearTimeout(copiedTimer);
-      copiedTimer = setTimeout(()=> setCopyState(false), 1200);
+      // ✅ 3 秒后回到 Copy
+      copiedTimer = setTimeout(()=> setCopyState(false), 3000);
     }catch(err){
       console.error(err);
       alert('复制失败：请检查浏览器权限/页面是否为 https。');
     }
   });
 
-  // ✅ 设置文本框内容 + 自动显隐
   function setStatusBoxText(text){
     statusTextEl.textContent = text || '';
     if(text && text.trim()){
       statusBox.style.display = 'block';
-      // 每次刷新内容都回到 Copy 状态（不残留 Copied）
       setCopyState(false);
     }else{
       statusBox.style.display = 'none';
@@ -373,7 +380,6 @@
     }
   }
 
-  // 文本框逻辑（保持你确认过的规则）
   function updateStatusBox(map){
     const get = (name) => {
       const target = norm(name);
@@ -385,9 +391,9 @@
 
     const IGNORE = new Set(['快递员收件','签收','派送异常'].map(norm));
     const CLASSIFIED = new Set([
-      '退回站点','集包','退回转运中心', // DSP错分
-      '上架',                       // 外城错分
-      '站点签入'                    // 未收到
+      '退回站点','集包','退回转运中心',
+      '上架',
+      '站点签入'
     ].map(norm));
 
     const dspMissort = get('退回站点') + get('集包') + get('退回转运中心');
