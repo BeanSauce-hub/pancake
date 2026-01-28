@@ -35,34 +35,36 @@
     box-shadow:0 0 0 2px rgba(255,255,255,0.06) inset;
   }
 
-  /* ✅ 自适应状态文本框：右上角，内容少就很小；内容多就滚动 */
+  /* ✅ 极简紧凑版状态文本框（贴内容） */
   #statusBox{
     position:absolute;
-    right:34px;
-    top:78px;
+    top:16px;
+    right:16px;
     z-index:2;
-
-    width:320px;
+  
+    width:fit-content;     /* 完全贴合文本 */
+    max-width:260px;       /* 防止一行过长 */
     height:auto;
-    min-height:0;
-
+  
+    padding:10px 12px;
     background:#0b1222;
     border:1px solid #334155;
-    border-radius:14px;
-    padding:14px 16px;
-
+    border-radius:12px;
+  
     color:#e5e7eb;
-    font-size:16px;
-    line-height:1.7;
+    font-size:15px;
+    line-height:1.6;
     letter-spacing:.2px;
-    box-shadow:0 0 0 2px rgba(255,255,255,0.03) inset;
+  
+    box-shadow:0 0 0 1px rgba(255,255,255,0.03) inset;
     white-space:pre-line;
-
-    max-height:260px;
+  
+    max-height:200px;
     overflow:auto;
-
+  
     display:none;
   }
+
 
   #statusBox::-webkit-scrollbar{width:10px}
   #statusBox::-webkit-scrollbar-thumb{background:#24324a;border-radius:10px;border:2px solid #0b1222}
