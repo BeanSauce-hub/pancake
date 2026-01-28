@@ -18,7 +18,7 @@
 
   .btn{border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:10px;padding:6px 12px;cursor:pointer}
   .btn:disabled{opacity:.5;cursor:not-allowed}
-  #save{position:absolute;top:16px;right:24px}
+  #save{position:absolute;top:16px;right:24px;z-index:5}
 
   #stage{position:relative;width:min(1400px,94vw);height:calc(88vh - 120px);display:flex;align-items:center;justify-content:center}
   #chart{width:100%;height:100%;background:var(--card);border:1px solid #334155;border-radius:16px}
@@ -28,19 +28,19 @@
     position:absolute;
     top:26px;
     left:34px;
-    z-index:2;
+    z-index:3;
     border:1px solid #334155;background:#1f2937;color:#e5e7eb;border-radius:12px;padding:8px 14px;
     box-shadow:0 0 0 2px rgba(255,255,255,0.06) inset;
   }
 
-  /* ✅ 文本框：改成右上角“竖向长方形” */
+  /* 右上角竖向文本框 */
   #statusBox{
     position:absolute;
     top:26px;
     right:34px;
-    width:260px;                 /* 窄一点 */
-    height:340px;                /* 长一点（竖向） */
-    z-index:2;
+    width:260px;
+    height:340px;
+    z-index:3;
     background:#0b1222;
     border:1px solid #334155;
     border-radius:14px;
@@ -51,10 +51,8 @@
     letter-spacing:.2px;
     box-shadow:0 0 0 2px rgba(255,255,255,0.03) inset;
     white-space:pre-line;
-    overflow:auto;               /* 内容多就滚动，不挤图 */
+    overflow:auto;
   }
-
-  /* 让滚动条更低调一点（可选，不影响功能） */
   #statusBox::-webkit-scrollbar{width:10px}
   #statusBox::-webkit-scrollbar-thumb{background:#24324a;border-radius:10px;border:2px solid #0b1222}
   #statusBox::-webkit-scrollbar-track{background:transparent}
@@ -120,41 +118,52 @@
     requestAnimationFrame(()=> chart && chart.resize());
   });
 
+  // utils
   const norm = s => String(s ?? '').replace(/[\s\u00A0\u200B-\u200D\uFEFF]/g,'').toLowerCase();
   const fmt  = n => n.toLocaleString('en-US');
 
-  function findHeaderCandidates(sheet, range, headerText, scanRows=80){
-    const target = norm(headerText), heads=[], R=Math.min(range.e.r, range.s.r+scanRows);
-    for(let r=range.s.r;r<=R;r++){
-      for(let c=range.s.c;c<=range.e.c;c++){
+  // ✅ 修复：只在“同一行”找表头（派送方 + 运单状态）
+  function findHeaderOnSameRow(sheet, range, scanRows=120){
+    const R = Math.min(range.e.r, range.s.r + scanRows);
+    for(let r=range.s.r; r<=R; r++){
+      let dispatchCol = null;
+      let statusCol = null;
+
+      for(let c=range.s.c; c<=range.e.c; c++){
         const cell = sheet[XLSX.utils.encode_cell({r,c})];
-        if(cell && norm(cell.w ?? cell.v) === target) heads.push({r,c});
+        const v = cell ? (cell.w ?? cell.v) : '';
+        const t = norm(v);
+
+        if(t === norm('派送方')) dispatchCol = c;
+        if(t === norm('运单状态')) statusCol = c;
+      }
+
+      // 必须同一行同时出现
+      if(dispatchCol !== null && statusCol !== null){
+        return { headerRow: r, dispatchCol, statusCol };
       }
     }
-    return heads;
+    return null;
   }
 
-  function scorePair(sheet, range, headA, headB){
-    const startRow = Math.max(headA.r, headB.r) + 1;
-    const freqByGroup = new Map();
-    let pairCount = 0, emptyStreak = 0, LIMIT = 20;
-    for(let r=startRow; r<=range.e.r; r++){
-      const ca = sheet[XLSX.utils.encode_cell({r, c: headA.c})];
-      const cb = sheet[XLSX.utils.encode_cell({r, c: headB.c})];
-      let ga = ca ? (ca.w ?? ca.v) : '';
-      let sb = cb ? (cb.w ?? cb.v) : '';
-      ga = String(ga ?? '').trim(); sb = String(sb ?? '').trim();
-      if(ga && sb){
-        pairCount++; emptyStreak = 0;
-        if(!freqByGroup.has(ga)) freqByGroup.set(ga, new Map());
-        const m = freqByGroup.get(ga);
-        m.set(sb, (m.get(sb)||0) + 1);
-      }else{
-        emptyStreak++;
-        if(emptyStreak >= LIMIT && pairCount > 0) break;
-      }
-    }
-    return { pairCount, freqByGroup };
+  function readCell(sheet, r, c){
+    const cell = sheet[XLSX.utils.encode_cell({r,c})];
+    const v = cell ? (cell.w ?? cell.v) : '';
+    return String(v ?? '').trim();
+  }
+
+  function isLikelyDispatch(val){
+    // 你常见的派送方：MIA-XXX（强特征是带 '-'）
+    // 避免把 CR000... 这种运单号当成派送方
+    const s = String(val||'').trim();
+    if(!s) return false;
+    if(s.length > 30) return false;
+    if(/^cr\d+/i.test(s)) return false;         // 强排除：CR+数字
+    if(/\s/.test(s)) return false;
+    // 允许：包含 '-' 的短码 / 或纯字母短码（极少数）
+    if(s.includes('-')) return true;
+    if(/^[a-z]{2,10}$/i.test(s)) return true;
+    return false;
   }
 
   async function loadWorkbook(file){
@@ -162,27 +171,40 @@
     const buf = await file.arrayBuffer();
     const wb  = XLSX.read(buf,{type:'array'});
 
+    let totalPairs = 0;
+
     for(const sheetName of wb.SheetNames){
       const sheet = wb.Sheets[sheetName];
       if(!sheet || !sheet['!ref']) continue;
       const range = XLSX.utils.decode_range(sheet['!ref']);
-      const hDispatch = findHeaderCandidates(sheet, range, '派送方');
-      const hStatus   = findHeaderCandidates(sheet, range, '运单状态');
-      if(hDispatch.length===0 || hStatus.length===0) continue;
 
-      let best = { pairCount: -1, freqByGroup: null };
-      for(const ha of hDispatch){
-        for(const hb of hStatus){
-          const res = scorePair(sheet, range, ha, hb);
-          if(res.pairCount > best.pairCount) best = res;
+      const header = findHeaderOnSameRow(sheet, range);
+      if(!header) continue;
+
+      const { headerRow, dispatchCol, statusCol } = header;
+      const startRow = headerRow + 1;
+
+      let emptyStreak = 0;
+      const LIMIT = 30;
+
+      for(let r=startRow; r<=range.e.r; r++){
+        const dispatch = readCell(sheet, r, dispatchCol);
+        const status   = readCell(sheet, r, statusCol);
+
+        if(dispatch && status){
+          emptyStreak = 0;
+
+          // ✅ 关键：过滤掉明显不像“派送方”的值（例如 CR000...）
+          if(!isLikelyDispatch(dispatch)) continue;
+
+          totalPairs++;
+          if(!GROUP.has(dispatch)) GROUP.set(dispatch, new Map());
+          const m = GROUP.get(dispatch);
+          m.set(status, (m.get(status)||0) + 1);
+        }else{
+          emptyStreak++;
+          if(emptyStreak >= LIMIT) break;
         }
-      }
-      if(best.pairCount <= 0) continue;
-
-      for(const [dispatch, inner] of best.freqByGroup.entries()){
-        if(!GROUP.has(dispatch)) GROUP.set(dispatch, new Map());
-        const g = GROUP.get(dispatch);
-        for(const [status, n] of inner.entries()) g.set(status, (g.get(status)||0) + n);
       }
     }
 
@@ -190,6 +212,7 @@
       if(chart){ chart.clear(); }
       selector.innerHTML=''; titlebar.textContent='';
       statusBox.textContent='';
+      alert('未在表格中找到可用数据：请确认表头包含“派送方”和“运单状态”，且在同一行。');
       return;
     }
 
@@ -210,10 +233,7 @@
       `${groupName} · 实际取件量 ${fmt(pick)} ｜ 应派件量 ${fmt(total)} ｜ ${suffix}取件率 ${(rate*100).toFixed(2)}%`;
   }
 
-  // ✅ 文本框逻辑：
-  // - 没有的分类：不显示
-  // - 忽略：快递员收件/签收/派送异常
-  // - 其它多余状态：显示“状态名称+数量”
+  // 文本框：没有就不显示；忽略快递员收件/签收/派送异常；多余状态显示“状态+数量”
   function updateStatusBox(map){
     const get = (name) => {
       const target = norm(name);
@@ -243,6 +263,7 @@
     if(outMissort > 0) lines.push(`外城错分${fmt(outMissort)}`);
     if(notReceived > 0) lines.push(`未收到${fmt(notReceived)}`);
 
+    // 多余状态：追加显示
     for(const [name, val] of map.entries()){
       const n = norm(name);
       const v = val || 0;
@@ -278,6 +299,7 @@
         data
       }]
     }, true);
+
     requestAnimationFrame(()=> chart && chart.resize());
   }
 
