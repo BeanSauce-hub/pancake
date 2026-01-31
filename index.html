@@ -350,14 +350,16 @@
       '站点签入','转运中心签入','转运中心签出'         // 未收到
     ].map(norm));
 
-    const dspMissort = get('退回站点') + get('集包') + get('退回转运中心');
+    const dspMissort = get('退回站点') + get('退回转运中心');
     const outMissort = get('上架');
     const notReceived = get('站点签入') + get('转运中心签入') + get('转运中心签出');
+    const stayHUB = get('集包');
 
     const lines = [];
     if(dspMissort > 0) lines.push(`DSP错分${fmt(dspMissort)}`);
     if(outMissort > 0) lines.push(`外城错分${fmt(outMissort)}`);
     if(notReceived > 0) lines.push(`未收到${fmt(notReceived)}`);
+    if(notReceived > 0) lines.push(`HUB滞留${fmt(notReceived)}`);
 
     for(const [name, val] of map.entries()){
       const n = norm(name);
