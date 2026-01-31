@@ -359,7 +359,7 @@
     if(dspMissort > 0) lines.push(`DSP错分${fmt(dspMissort)}`);
     if(outMissort > 0) lines.push(`外城错分${fmt(outMissort)}`);
     if(notReceived > 0) lines.push(`未收到${fmt(notReceived)}`);
-    if(notReceived > 0) lines.push(`HUB滞留${fmt(notReceived)}`);
+    if(notReceived > 0) lines.push(`HUB滞留${fmt(stayHUB)}`);
 
     for(const [name, val] of map.entries()){
       const n = norm(name);
