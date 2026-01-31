@@ -352,7 +352,7 @@
 
     const dspMissort = get('退回站点') + get('集包') + get('退回转运中心');
     const outMissort = get('上架');
-    const notReceived = get('站点签入');
+    const notReceived = get('站点签入') + get('转运中心签入') + get('转运中心签出');
 
     const lines = [];
     if(dspMissort > 0) lines.push(`DSP错分${fmt(dspMissort)}`);
